@@ -15,8 +15,7 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/history"
 )
 
-// Statuses that are a model's or provider's transient failure. Any other
-// non-200 status means the request or the key is wrong, so it panics.
+// Only these are the model's fault; anything else is a bug in our request or key.
 var retryableStatuses = map[int]bool{
 	http.StatusRequestTimeout:      true,
 	http.StatusTooManyRequests:     true,
@@ -26,9 +25,6 @@ var retryableStatuses = map[int]bool{
 	http.StatusGatewayTimeout:      true,
 }
 
-// runAttempt sends one chat request. OpenRouter returns X-Generation-Id with
-// the headers, long before a slow body, so a request cut short after that
-// still has a real model, which the generation log supplies.
 func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(json.RawMessage) error) (attempt, bool) {
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.settings.ChatURL, bytes.NewReader(payload))
@@ -72,9 +68,7 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 	return result, true
 }
 
-// interrupted classifies a request that ended without a usable 200 body. A
-// request OpenRouter accepted is always attributed to a real model from the
-// generation log, which panics if the log never names one.
+// X-Generation-Id arrives with the headers, long before a slow body, so a cut-short request still resolves to a real model.
 func (e *Engine) interrupted(ctx context.Context, generationID string, start time.Time, reason string) attempt {
 	latency := time.Since(start)
 	outcome := history.OutcomeFailed

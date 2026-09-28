@@ -26,9 +26,19 @@ type Timing struct {
 type Outcome[T any] struct {
 	// In launch order.
 	Results []T
-	// Index into Results of the first attempt to succeed, or -1.
-	Winner int
+	winner  int
 }
+
+// Winner returns the first attempt to succeed, if any did.
+func (o Outcome[T]) Winner() (T, bool) {
+	if o.winner == -1 {
+		var none T
+		return none, false
+	}
+	return o.Results[o.winner], true
+}
+
+func (o Outcome[T]) IsWinner(index int) bool { return index == o.winner }
 
 type handle[T any] struct {
 	launched time.Time
@@ -116,7 +126,7 @@ func Run[T any](ctx context.Context, timing Timing, attempt func(ctx context.Con
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	return Outcome[T]{Results: results, Winner: winner}
+	return Outcome[T]{Results: results, winner: winner}
 }
 
 func isClosed(ch chan struct{}) bool {

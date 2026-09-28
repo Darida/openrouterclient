@@ -8,12 +8,9 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-// Routes to OpenRouter's free models only; the exclusion list narrows which.
-const routerModel = "openrouter/free"
+const freeModelsRouter = "openrouter/free"
 
-// A ranking hint that weights provider choice by historical p50, not an
-// enforced cutoff. The hedge's timeouts are what actually bound a request.
-const preferredMaxLatencySeconds = 30
+const latencyRankingHintSeconds = 30
 
 type Message struct {
 	Role    string `json:"role"`
@@ -38,12 +35,12 @@ func BuildPayload(messages []Message, schema model.JSONSchema, excludedModels []
 		plugins = append(plugins, map[string]any{"id": "auto-router", "allowed_models": allowed})
 	}
 	payload := map[string]any{
-		"model": routerModel,
+		"model": freeModelsRouter,
 		"response_format": map[string]any{
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},
 		},
-		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": preferredMaxLatencySeconds},
+		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds},
 		"reasoning": map[string]any{"exclude": true, "effort": "low"},
 		"plugins":   plugins,
 		"messages":  messages,

@@ -47,8 +47,6 @@ func (c *Client) ResolveModel(generationID string) string {
 	}
 }
 
-// Returns pending for a 404, and err for a transport failure worth retrying.
-// Any other non-200 status, or a 200 without a model, panics.
 func (c *Client) lookupOnce(generationID string, deadline time.Time) (model string, pending bool, err error) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()

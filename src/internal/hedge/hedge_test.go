@@ -18,8 +18,8 @@ func TestRun_whenFirstAttemptFails_thenSecondLaunchesBeforeStagger(t *testing.T)
 	outcome := Run(context.Background(), fastTiming, attempt)
 
 	// Assert
-	if outcome.Winner != 1 || time.Since(start) >= fastTiming.Stagger {
-		t.Fatalf("winner=%d after %s; want attempt 2 to win before the stagger", outcome.Winner, time.Since(start))
+	if !outcome.IsWinner(1) || time.Since(start) >= fastTiming.Stagger {
+		t.Fatalf("outcome %+v after %s; want attempt 2 to win before the stagger", outcome, time.Since(start))
 	}
 }
 
@@ -68,7 +68,7 @@ func TestRun_whenEveryAttemptFails_thenNoWinner(t *testing.T) {
 	outcome := Run(context.Background(), fastTiming, attempt)
 
 	// Assert
-	if outcome.Winner != -1 || len(outcome.Results) != 3 {
+	if _, won := outcome.Winner(); won || len(outcome.Results) != 3 {
 		t.Fatalf("got %+v; want 3 results and no winner", outcome)
 	}
 }

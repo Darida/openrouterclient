@@ -50,7 +50,8 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
 	for round := 1; round <= e.settings.MaxRounds; round++ {
-		result, ok := e.runRound(ctx, req, outputValidator, messages, round, &failures)
+		result, roundFailures, ok := e.runRound(ctx, req, outputValidator, messages, round)
+		failures = append(failures, roundFailures...)
 		if err := ctx.Err(); err != nil {
 			return model.GeneratedText{}, err
 		}
@@ -66,50 +67,61 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
 }
 
-// runRound generates from messages, reviews the winner, and records the
-// generation with its rating. It returns false when either hedge had no winner.
-func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int, failures *[]model.FailedAttempt) (reviewedRound, bool) {
+func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
+	return e.history.RecordManual(generationID, q, reason, time.Now())
+}
+
+// runRound generates from messages and reviews the winner. It returns false
+// when either the generation or the review had no winner.
+func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	excluded := e.excludedModels()
 	e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
-	gen, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality, failures)
+	gen, failures, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
 	if !ok {
-		return reviewedRound{}, false
+		return reviewedRound{}, failures, false
 	}
+	result, reviewFailures, ok := e.reviewGeneration(ctx, req, gen, excluded, round)
+	return result, append(failures, reviewFailures...), ok
+}
 
-	reviewMessages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
-	rev, ok := e.hedge(ctx, chat.BuildPayload(reviewMessages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "", failures)
+// reviewGeneration rates gen against the rules and records it with that
+// rating, or with none if the review had no winner.
+func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, excluded []string, round int) (reviewedRound, []model.FailedAttempt, bool) {
+	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
+	rev, failures, ok := e.hedge(ctx, chat.BuildPayload(messages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "")
 	if !ok {
 		e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
-		return reviewedRound{}, false
+		return reviewedRound{}, failures, false
 	}
 
 	verdict := review.Parse(rev.content)
 	rated := quality.FromNoteCount(len(verdict.Notes))
 	e.recordGeneration(gen, rated, req.TargetQuality, review.FormatNotes(verdict.Notes))
 	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes))
-	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, true
+	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, failures, true
 }
 
-func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
-	return e.history.RecordManual(generationID, q, reason, time.Now())
-}
-
-// hedge runs one hedged request and records every attempt except the
-// generator's winner, whose quality the review decides. Failures are
-// appended to failures.
-func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.RawMessage) error, role history.Role, target model.Quality, failures *[]model.FailedAttempt) (attempt, bool) {
+// hedge runs one hedged request. The generator's winner is left unrecorded,
+// because its quality comes from the review.
+func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.RawMessage) error, role history.Role, target model.Quality) (attempt, []model.FailedAttempt, bool) {
 	outcome := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
 		e.logger.Info("openrouter: attempt launched", "role", role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts)
 		return e.runAttempt(attemptCtx, payload, validate)
 	})
+	failures := e.recordAttempts(outcome, role, target)
+	winner, ok := outcome.Winner()
+	return winner, failures, ok
+}
 
+func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], role history.Role, target model.Quality) []model.FailedAttempt {
+	var failures []model.FailedAttempt
 	for i, a := range outcome.Results {
 		if a.canceled {
 			continue
 		}
 		if a.outcome != history.OutcomeSuccess {
 			e.logger.Warn("openrouter: attempt failed", "role", role, "attempt", i+1, "model", a.model, "generationId", a.generationID, "outcome", a.outcome, "latency", a.latency, "reason", a.reason)
-			*failures = append(*failures, model.FailedAttempt{Outcome: publicOutcome(a.outcome), Model: a.model, GenerationID: a.generationID, Quality: model.QualityUnusable, Reason: rolePrefix(role) + a.reason})
+			failures = append(failures, model.FailedAttempt{Outcome: publicOutcome(a.outcome), Model: a.model, GenerationID: a.generationID, Quality: model.QualityUnusable, Reason: rolePrefix(role) + a.reason})
 			if a.model != "" {
 				e.history.Append(e.entry(a, role, model.QualityUnusable, target, a.reason))
 			}
@@ -119,14 +131,11 @@ func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.R
 		switch {
 		case role == history.RoleReviewer:
 			e.history.Append(e.entry(a, role, "", "", ""))
-		case i != outcome.Winner:
+		case !outcome.IsWinner(i):
 			e.history.Append(e.entry(a, role, "", target, "succeeded after another attempt won"))
 		}
 	}
-	if outcome.Winner == -1 {
-		return attempt{}, false
-	}
-	return outcome.Results[outcome.Winner], true
+	return failures
 }
 
 func (e *Engine) recordGeneration(gen attempt, rated, target model.Quality, reason string) {
