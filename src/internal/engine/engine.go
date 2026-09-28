@@ -50,44 +50,44 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
 	for round := 1; round <= e.settings.MaxRounds; round++ {
-		excluded := e.excludedModels()
-		e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
-		gen, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality, &failures)
+		result, ok := e.runRound(ctx, req, outputValidator, messages, round, &failures)
 		if err := ctx.Err(); err != nil {
 			return model.GeneratedText{}, err
 		}
 		if !ok {
 			return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
 		}
-
-		reviewMessages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
-		rev, ok := e.hedge(ctx, chat.BuildPayload(reviewMessages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "", &failures)
-		if !ok {
-			e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
-			if err := ctx.Err(); err != nil {
-				return model.GeneratedText{}, err
-			}
-			return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+		if !quality.Below(result.quality, req.TargetQuality) {
+			return result.generatedText(), nil
 		}
-
-		verdict := review.Parse(rev.content)
-		rated := quality.FromNoteCount(len(verdict.Notes))
-		notes := review.FormatNotes(verdict.Notes)
-		e.recordGeneration(gen, rated, req.TargetQuality, notes)
-		e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes))
-
-		if !quality.Below(rated, req.TargetQuality) {
-			return model.GeneratedText{
-				Content:      gen.content,
-				Model:        gen.model,
-				GenerationID: gen.generationID,
-				Review:       model.Review{Verdict: verdict, Quality: rated, Model: rev.model, GenerationID: rev.generationID},
-			}, nil
-		}
-		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: gen.model, GenerationID: gen.generationID, Quality: rated, Reason: notes})
-		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.CorrectionPrompt(verdict.Notes))}
+		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: result.gen.model, GenerationID: result.gen.generationID, Quality: result.quality, Reason: review.FormatNotes(result.verdict.Notes)})
+		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+}
+
+// runRound generates from messages, reviews the winner, and records the
+// generation with its rating. It returns false when either hedge had no winner.
+func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int, failures *[]model.FailedAttempt) (reviewedRound, bool) {
+	excluded := e.excludedModels()
+	e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
+	gen, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality, failures)
+	if !ok {
+		return reviewedRound{}, false
+	}
+
+	reviewMessages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
+	rev, ok := e.hedge(ctx, chat.BuildPayload(reviewMessages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "", failures)
+	if !ok {
+		e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
+		return reviewedRound{}, false
+	}
+
+	verdict := review.Parse(rev.content)
+	rated := quality.FromNoteCount(len(verdict.Notes))
+	e.recordGeneration(gen, rated, req.TargetQuality, review.FormatNotes(verdict.Notes))
+	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes))
+	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, true
 }
 
 func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
