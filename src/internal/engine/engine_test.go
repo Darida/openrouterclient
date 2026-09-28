@@ -108,7 +108,9 @@ func noNotes(int) string { return `{"notes":[]}` }
 
 func newEngine(t *testing.T, settings Settings) (*Engine, string) {
 	path := filepath.Join(t.TempDir(), "history.json")
-	return New(settings, "key", history.Open(path), slog.New(slog.NewTextHandler(io.Discard, nil))), path
+	engine := New(settings, "key", history.Open(path), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(engine.Close)
+	return engine, path
 }
 
 func readHistory(t *testing.T, path string) []history.Entry {
