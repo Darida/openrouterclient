@@ -150,5 +150,90 @@
     "targetQuality": "medium",
     "latencySeconds": 3.490604097,
     "reason": "- [The haiku must mention night or darkness.] The haiku lines do not contain any reference to night or darkness. To fix, include a word like 'night', 'dark', 'midnight', etc. in one of the three lines while preserving the 5-7-5 syllable pattern."
+  },
+  {
+    "timestamp": "2026-09-28T19:55:58.329373836Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790625331-2xMap3TGEocpW6R9hPOq",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 6.8402296,
+    "reason": "- [The haiku must mention night or darkness.] The haiku lines contain no reference to night or darkness; to fix, add a word like 'night' or 'dark' in one of the lines."
+  },
+  {
+    "timestamp": "2026-09-28T19:55:58.330700198Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790625337-LSmdMTNx0kxZExdfsKY4",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 20.564650881
+  },
+  {
+    "timestamp": "2026-09-28T19:59:08.959472448Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790625515-6hGeXhO16ZDpUnLVTMJX",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 19.454853708999998
+  },
+  {
+    "timestamp": "2026-09-28T19:59:08.959601049Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790625534-UVTYY4mNQhHoMWFZ9e5i",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 14.353705261
+  },
+  {
+    "timestamp": "2026-09-28T19:59:35.36589919Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790625549-kkcSei3LkozASWQGbbgI",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 8.724573163,
+    "reason": "- [2] The first line has six syllables instead of five; adjust it to fit the 5-7-5 pattern.\n- [3] The haiku does not mention night or darkness; include a word like 'night' or 'darkness' to meet the requirement."
+  },
+  {
+    "timestamp": "2026-09-28T20:02:53.103278501Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790625735-GpWYnUmylwldOLFJgdDA",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 18.422634707,
+    "reason": "- [3] The haiku must mention night or darkness; the current lines do not include any such word. Add a word like 'night' or 'darkness' to one of the lines."
+  },
+  {
+    "timestamp": "2026-09-28T20:02:53.103422644Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790625754-oduuoEU2HnfZxeUjCppr",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 0.349134662,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:02:53.105419481Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790625756-PVhs6KiTj5UwgJHSgeb1",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 18.566323833
   }
 ]
