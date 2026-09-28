@@ -235,5 +235,80 @@
     "source": "auto",
     "outcome": "success",
     "latencySeconds": 18.566323833
+  },
+  {
+    "timestamp": "2026-09-28T20:05:40.806743598Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790625934-rzLwQ5gzOKvQLWjLNzMp",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.339212256,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:05:46.739606149Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790625934-FAw9lQtXtPG7wO50C8hU",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 6.331265142,
+    "reason": "- [The haiku must mention night or darkness.] The haiku lines contain no reference to night or darkness. To fix, include a word like 'night', 'dark', 'midnight', or similar in one of the lines."
+  },
+  {
+    "timestamp": "2026-09-28T20:05:46.739779199Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790625940-CzCEkXKw8NEloK0mIHe6",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 0.290151243,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:05:46.742268586Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790625941-lJ5CSgcXt1NjZF3v5sHy",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 5.642591086
+  },
+  {
+    "timestamp": "2026-09-28T20:06:20.946842877Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790625947-knEBtO24i0aFSm9mkXiG",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 29.923910082
+  },
+  {
+    "timestamp": "2026-09-28T20:06:20.947296476Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790625977-UVj4GbvyQt7LbmLjeiq3",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 0.29086419,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:06:20.949837217Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790625977-WblldyIJxpWGcRhGlESk",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 3.723984273
   }
 ]
