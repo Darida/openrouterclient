@@ -41,7 +41,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 - `src/internal/` holds all behavior, split into these packages:
   - `chat`: builds the wire payload and parses responses.
   - `hedge`: runs staggered parallel attempts.
-  - `generationlog`: polls OpenRouter's `/api/v1/generation` log.
+  - `catalog`: caches OpenRouter's model list and names the candidates.
   - `history`: stores outcomes and computes exclusions.
   - `review`: holds the fixed review prompt and schema.
   - `quality`: ranks qualities and derives one from a review's note count.
@@ -55,41 +55,26 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 
 - **Hedged attempts.** The first attempt starts immediately. Another
   attempt starts when the previous one fails, or when it has been pending
-  60s with no response. There are at most 3 attempts. Once one wins, the
-  others get whichever is later of 30s past the win or 60s of their own
-  runtime, and are then aborted. Each attempt also has a hard timeout.
-  Both generation and review calls are hedged this way. A call moves on the
-  moment an attempt wins; stragglers are aborted, resolved, and recorded in
-  the background, and `Client.Close` waits for that before exit. A failed
-  attempt counts as done immediately, and its model is resolved from the
-  log afterwards, so a slow log never delays the next attempt.
-- **Attribution.** Every attempt OpenRouter accepted, which is known from
-  its `X-Generation-Id` header, is attributed to a real model. An attempt
-  that times out, breaks mid-body, is aborted after another attempt won, or
-  returns a provider error has its connection killed first, because
-  OpenRouter only logs a generation once its connection is gone. Its model
-  is then resolved by polling the generation log for that id, for up to 3
-  minutes, and it is recorded as a failure. The log names models by dated
-  slug (`vendor/model-20260811:free`), which is translated to the
-  response's model id (`vendor/model:free`) through OpenRouter's model
-  catalog.
+  60s with no response. There are at most 3 attempts. Every attempt gets
+  61s, just past the 60s at which a success already counts as a failure,
+  whether or not another attempt has won; one still running then is a
+  timeout. Both generation and review calls are hedged this way. A call
+  moves on the moment an attempt wins; stragglers finish and are recorded
+  in the background, and `Client.Close` waits for that before exit.
+- **Attribution.** Every attempt names its model, so a failure is recorded
+  against the model that attempt asked. A request OpenRouter never
+  accepted, which has no `X-Generation-Id`, never reached the model, so it
+  is reported in the returned error but not written to history.
 - **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
   a request, so an upstream failure can arrive as an `error` object inside
   a 200 body as well as with a transient non-200 status. A 200 whose body
   is a provider error other than a rate limit arrives within a second,
   before any generation exists, so the same attempt resends it after a 1s
-  pause. That doesn't use up an attempt or count against any model; the
-  attempt's own timeout still bounds it. A non-200 provider error counts as
-  a failure of the model the log names. A rate limit (error code 429) is
-  rejected before any generation exists, so the log never has it. Its
-  model is parsed from the error's `metadata.raw` message instead, and an
-  unrecognized message panics. Requests go out with provider
-  fallbacks disabled, so a failing provider fails that attempt instead of
-  being silently retried elsewhere. If the log doesn't
-  resolve within its window, the process panics. A history entry never
-  records a guessed or placeholder model. A request OpenRouter never
-  accepted has no model, so it is reported in the returned error but not
-  written to history.
+  pause. That doesn't use up an attempt or count against the model; the
+  attempt's own timeout still bounds it. A rate limit (429) or a transient
+  non-200 status counts as a failure of the attempt's model. Requests go
+  out with provider fallbacks disabled, so a failing provider fails that
+  attempt instead of being silently retried elsewhere.
 - **Correction rounds.** There are at most 3 rounds, counting the first
   generation. Failed or timed-out review attempts are recorded against the
   reviewer's model. Output that doesn't match the schema, whether from the
@@ -134,12 +119,11 @@ This library never falls back and never swallows a failure.
   model failure. Any other non-200 status means the request or the key is
   wrong, so it panics.
 - Anything unexpected panics, with the full raw body in the message. That
-  includes a response with neither `model` nor `error`, a non-200 body
-  that isn't an OpenRouter error object, a 200 response with no
-  `X-Generation-Id`, a log model name the catalog can't match to exactly
-  one model, a generation log that never resolves or answers with
-  an unexpected status, an invalid `OutputSchema` or `TargetQuality`, and
-  an unreadable or malformed history file. A panic inside a parallel
+  includes a 200 body that isn't JSON, a non-200 body that isn't an
+  OpenRouter error object, a 200 response with no `X-Generation-Id`, a
+  model list that can't be fetched or leaves no candidate after
+  exclusions, an invalid `OutputSchema`, `TargetQuality`, or `Tag`, and an
+  unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.
 - `New` returns an error for any missing `Config` field. Every field is
   required and none has a default.

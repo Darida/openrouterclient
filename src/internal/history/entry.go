@@ -28,7 +28,6 @@ const (
 	OutcomeSuccess       Outcome = "success"
 	OutcomeFailed        Outcome = "failed"
 	OutcomeTimeout       Outcome = "timeout"
-	OutcomeAborted       Outcome = "aborted"
 	OutcomeInvalidOutput Outcome = "invalid_output"
 )
 

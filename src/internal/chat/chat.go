@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -16,36 +15,12 @@ type Message struct {
 	Content string `json:"content"`
 }
 
-type Response struct {
-	Model   string
-	Content json.RawMessage
-}
-
 // ProviderError is an upstream failure OpenRouter relays as an "error" object,
 // either in a non-200 body or in a 200 body whose headers were already sent.
 type ProviderError struct {
 	Code     int             `json:"code"`
 	Message  string          `json:"message"`
 	Metadata json.RawMessage `json:"metadata"`
-}
-
-// A rate limit is rejected before any generation exists, so the log never
-// has it; the model appears only in the free-text metadata.raw message.
-var rateLimitedModelPattern = regexp.MustCompile(`^(\S+/\S+) is temporarily rate-limited upstream`)
-
-// RateLimitedModel panics unless metadata.raw names the model in the known wording.
-func (p *ProviderError) RateLimitedModel() string {
-	var metadata struct {
-		Raw string `json:"raw"`
-	}
-	if err := json.Unmarshal(p.Metadata, &metadata); err != nil {
-		panic(fmt.Sprintf("chat: rate-limit metadata is not JSON: %v — %s", err, p.Metadata))
-	}
-	match := rateLimitedModelPattern.FindStringSubmatch(metadata.Raw)
-	if match == nil {
-		panic(fmt.Sprintf("chat: rate-limit message names no model in the known wording: %q", metadata.Raw))
-	}
-	return match[1]
 }
 
 func (p *ProviderError) Error() string {
@@ -84,14 +59,12 @@ func ParseErrorBody(body []byte) *ProviderError {
 	return parsed.Error
 }
 
-// ParseResponse returns a *ProviderError for a relayed upstream failure, which
-// names no model. Otherwise it panics if the body isn't JSON or names no model.
-// A missing or non-JSON message content is the model's fault, so it comes back
-// as an error alongside the known model.
-func ParseResponse(body []byte) (Response, error) {
+// ParseResponse returns a *ProviderError for a relayed upstream failure.
+// Otherwise it panics if the body isn't JSON; a missing or non-JSON message
+// content is the model's fault, so it comes back as an error.
+func ParseResponse(body []byte) (json.RawMessage, error) {
 	var parsed struct {
 		Error   *ProviderError `json:"error"`
-		Model   string         `json:"model"`
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
@@ -102,19 +75,14 @@ func ParseResponse(body []byte) (Response, error) {
 		panic(fmt.Sprintf("chat: 200 response body is not JSON: %v — body: %s", err, body))
 	}
 	if parsed.Error != nil {
-		return Response{}, parsed.Error
+		return nil, parsed.Error
 	}
-	if parsed.Model == "" {
-		panic(fmt.Sprintf("chat: 200 response has no model — body: %s", body))
-	}
-	response := Response{Model: parsed.Model}
 	if len(parsed.Choices) == 0 || parsed.Choices[0].Message.Content == "" {
-		return response, errors.New("response has no message content")
+		return nil, errors.New("response has no message content")
 	}
 	raw := parsed.Choices[0].Message.Content
 	if !json.Valid([]byte(raw)) {
-		return response, fmt.Errorf("message content is not valid JSON: %s", raw)
+		return nil, fmt.Errorf("message content is not valid JSON: %s", raw)
 	}
-	response.Content = json.RawMessage(raw)
-	return response, nil
+	return json.RawMessage(raw), nil
 }

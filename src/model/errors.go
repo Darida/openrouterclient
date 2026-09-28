@@ -25,8 +25,6 @@ type AttemptOutcome string
 const (
 	OutcomeFailed  AttemptOutcome = "failed"
 	OutcomeTimeout AttemptOutcome = "timeout"
-	// Cut short because a parallel attempt already succeeded.
-	OutcomeAborted AttemptOutcome = "aborted"
 	// The reply was missing, not JSON, or did not match the requested schema.
 	OutcomeInvalidOutput AttemptOutcome = "invalid_output"
 	OutcomeBelowTarget   AttemptOutcome = "below_target"
