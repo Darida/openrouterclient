@@ -40,7 +40,7 @@ func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	}
 	var candidates []Model
 	for _, m := range c.models {
-		if inTier(m.ID, tier) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
+		if inTier(m.ID, tier) && !isBatchOnly(m.ID) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
 			candidates = append(candidates, Model{ID: m.ID, PromptUSDPerToken: price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: price(m.ID, "completion", m.Pricing.Completion)})
 		}
 	}
@@ -95,6 +95,11 @@ func inTier(id string, tier model.ModelTier) bool {
 		return !free && !strings.HasPrefix(id, "openrouter/")
 	}
 	panic(fmt.Sprintf("catalog: unknown model tier %q", tier))
+}
+
+// A ":batch" variant rejects the chat/completions endpoint with a 404.
+func isBatchOnly(id string) bool {
+	return strings.HasSuffix(id, ":batch")
 }
 
 func price(id, kind, raw string) float64 {

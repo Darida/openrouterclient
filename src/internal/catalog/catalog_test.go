@@ -13,6 +13,7 @@ import (
 const catalogBody = `{"data":[
   {"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
   {"id":"liquid/lfm-2.5-2.6b","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"}},
+  {"id":"openai/gpt-6-luna-pro:batch","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.00000005","completion":"0.0000001"}},
   {"id":"openrouter/auto","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-1","completion":"-1"}},
   {"id":"nvidia/nemotron-3.5-lightning:free","supported_parameters":["tools"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
 ]}`
@@ -48,7 +49,7 @@ func TestCatalogCandidates_whenFreeTier_thenOnlyFreeWithStructuredOutputs(t *tes
 	}
 }
 
-func TestCatalogCandidates_whenPaidTier_thenSkipsFreeAndRouters(t *testing.T) {
+func TestCatalogCandidates_whenPaidTier_thenSkipsFreeRoutersAndBatchVariants(t *testing.T) {
 	// Arrange
 	c, _ := newCatalog(t)
 
