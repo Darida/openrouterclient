@@ -2,17 +2,9 @@ package model
 
 // ReviewVerdict is the fixed output schema of every automatic review, whatever the caller's rules.
 type ReviewVerdict struct {
-	Status ReviewStatus `json:"status"`
-	// One entry per violated rule. It is empty when Status is ReviewApproved.
+	// One entry per violated rule.
 	Notes []ReviewNote `json:"notes"`
 }
-
-type ReviewStatus string
-
-const (
-	ReviewApproved ReviewStatus = "APPROVED"
-	ReviewRejected ReviewStatus = "REJECTED"
-)
 
 type ReviewNote struct {
 	// The rule violated, quoted or named as it appears in ReviewRulesPrompt.
@@ -25,7 +17,9 @@ type ReviewNote struct {
 // OpenRouter generation, so it may be a different model than the one it
 // judged.
 type Review struct {
-	Verdict      ReviewVerdict
+	Verdict ReviewVerdict
+	// The quality this review assigned to the generation it judged.
+	Quality      Quality
 	Model        string
 	GenerationID string
 }

@@ -13,9 +13,9 @@ type Client interface {
 	// GenerateText returns only reviewed content. Its sole error is
 	// *model.AttemptsExhaustedError; anything unexpected panics.
 	GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error)
-	// Rate records a manual review of a GenerationID in this client's history;
-	// it errors for an unknown or already-rated id.
-	Rate(ctx context.Context, generationID string, vote model.Vote, reason string) error
+	// Rate records a manual high/medium/low rating of a GenerationID in history;
+	// it errors for any other quality or an unknown or already-rated id.
+	Rate(ctx context.Context, generationID string, quality model.Quality, reason string) error
 }
 
 // Every field is required. New returns an error if any is unset.
