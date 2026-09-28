@@ -1,4 +1,4 @@
-package openrouterclient
+package model
 
 import "encoding/json"
 
@@ -12,7 +12,6 @@ type GeneratedText struct {
 	Model string
 	// OpenRouter's id for this generation, and the handle Client.Rate takes.
 	GenerationID string
-	// The automatic review that approved Content. Its Verdict.Status is always
-	// ReviewApproved.
+	// The automatic review of Content. Its Quality always meets TargetQuality.
 	Review Review
 }

@@ -1,4 +1,4 @@
-package openrouterclient
+package model
 
 import "encoding/json"
 
@@ -11,9 +11,11 @@ type JSONSchema struct {
 
 type TextGenerationRequirements struct {
 	Prompt string
-	// Appended to the library's fixed review instructions for the automatic
-	// follow-up review. The reviewer judges the generated content against
-	// these rules only.
+	// Appended to the library's fixed review instructions. The reviewer judges
+	// content against these rules only.
 	ReviewRulesPrompt string
 	OutputSchema      JSONSchema
+	// The lowest acceptable quality: high, medium, or low. A result rated
+	// below it counts as a failure against its model and gets corrected.
+	TargetQuality Quality
 }
