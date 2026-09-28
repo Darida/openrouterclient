@@ -112,3 +112,16 @@ func TestChatBuildPayload_whenBuilt_thenSendsMaxTokens(t *testing.T) {
 		t.Fatalf("payload has no max_tokens: %s", payload)
 	}
 }
+
+func TestChatBuildPayload_whenBuilt_thenSendsNoReasoningParameter(t *testing.T) {
+	// Arrange
+	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
+
+	// Act
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m", 100))
+
+	// Assert
+	if strings.Contains(payload, `"reasoning"`) {
+		t.Fatalf("payload sends reasoning, which require_parameters would demand of every endpoint: %s", payload)
+	}
+}
