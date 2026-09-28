@@ -14,7 +14,6 @@ import (
 
 	"github.com/Darida/openrouterclient/src/internal/catalog"
 	"github.com/Darida/openrouterclient/src/internal/chat"
-	"github.com/Darida/openrouterclient/src/internal/generationlog"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/quality"
@@ -27,7 +26,6 @@ type Engine struct {
 	settings Settings
 	apiKey   string
 	http     *http.Client
-	log      *generationlog.Client
 	catalog  *catalog.Catalog
 	history  *history.Store
 	logger   *slog.Logger
@@ -41,7 +39,6 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 		settings: settings,
 		apiKey:   apiKey,
 		http:     httpClient,
-		log:      &generationlog.Client{URL: settings.GenerationLogURL, APIKey: apiKey, HTTP: httpClient, Timing: settings.GenerationLog},
 		catalog:  &catalog.Catalog{URL: settings.CatalogURL, HTTP: httpClient},
 		history:  store,
 		logger:   logger,
@@ -139,8 +136,7 @@ func (e *Engine) hedge(ctx context.Context, messages []chat.Message, schema mode
 	candidates := e.candidateModels(label.tag)
 	race := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
 		modelID := candidates[rand.IntN(len(candidates))]
-		e.logger.Info("openrouter: attempt launched", "role", label.role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts, "model", modelID)
-		return e.runAttempt(attemptCtx, chat.BuildPayload(messages, schema, modelID), validate)
+		return e.runAttempt(attemptCtx, modelID, chat.BuildPayload(messages, schema, modelID), validate)
 	})
 	winner, ok := race.Winner()
 	if !ok {
@@ -161,19 +157,15 @@ func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel)
 		if a.canceled {
 			continue
 		}
-		if a.model == "" && a.generationID != "" {
-			e.logger.Warn("openrouter: resolving model from generation log", "role", role, "attempt", i+1, "generationId", a.generationID, "outcome", a.outcome, "reason", a.reason)
-			a.model = e.catalog.ModelID(e.log.ResolveModel(a.generationID))
-		}
 		if a.outcome != history.OutcomeSuccess {
-			e.logger.Warn("openrouter: attempt failed", "role", role, "attempt", i+1, "model", a.model, "generationId", a.generationID, "outcome", a.outcome, "latency", a.latency, "reason", a.reason)
+			e.logger.Warn("openrouter: attempt", "role", role, "n", i+1, "model", a.model, "outcome", a.outcome, "latency", a.latency.Round(time.Millisecond), "resends", a.resends, "reason", a.reason)
 			failures = append(failures, model.FailedAttempt{Outcome: publicOutcome(a.outcome), Model: a.model, GenerationID: a.generationID, Quality: model.QualityUnusable, Reason: rolePrefix(role) + a.reason})
-			if a.model != "" {
+			if a.generationID != "" {
 				e.history.Append(e.entry(a, label, model.QualityUnusable, a.reason))
 			}
 			continue
 		}
-		e.logger.Info("openrouter: attempt succeeded", "role", role, "attempt", i+1, "model", a.model, "latency", a.latency)
+		e.logger.Info("openrouter: attempt", "role", role, "n", i+1, "model", a.model, "outcome", a.outcome, "latency", a.latency.Round(time.Millisecond), "resends", a.resends)
 		switch {
 		case role == history.RoleReviewer:
 			e.history.Append(e.entry(a, label, "", ""))
@@ -221,11 +213,8 @@ func (e *Engine) candidateModels(tag string) []string {
 
 func (e *Engine) excludedModels(tag string) []string {
 	exclusions := e.history.Exclusions(time.Now(), tag)
-	if len(exclusions.BelowCap) > 0 {
-		e.logger.Info("openrouter: models with recent failures below the exclusion cap", "models", strings.Join(exclusions.BelowCap, ", "))
-	}
-	if len(exclusions.Excluded) > 0 {
-		e.logger.Info("openrouter: excluding models with high failure rates", "models", strings.Join(exclusions.Excluded, ", "))
+	if len(exclusions.BelowCap) > 0 || len(exclusions.Excluded) > 0 {
+		e.logger.Info("openrouter: model failures", "tag", tag, "excluded", strings.Join(exclusions.Excluded, ", "), "belowCap", strings.Join(exclusions.BelowCap, ", "))
 	}
 	return exclusions.Excluded
 }
@@ -245,8 +234,6 @@ func publicOutcome(o history.Outcome) model.AttemptOutcome {
 		return model.OutcomeFailed
 	case history.OutcomeTimeout:
 		return model.OutcomeTimeout
-	case history.OutcomeAborted:
-		return model.OutcomeAborted
 	case history.OutcomeInvalidOutput:
 		return model.OutcomeInvalidOutput
 	}

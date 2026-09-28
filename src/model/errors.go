@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // AttemptsExhaustedError means every allowed attempt failed, timed out, or
 // was rated below TargetQuality.
@@ -25,13 +28,30 @@ type AttemptOutcome string
 const (
 	OutcomeFailed  AttemptOutcome = "failed"
 	OutcomeTimeout AttemptOutcome = "timeout"
-	// Cut short because a parallel attempt already succeeded.
-	OutcomeAborted AttemptOutcome = "aborted"
 	// The reply was missing, not JSON, or did not match the requested schema.
 	OutcomeInvalidOutput AttemptOutcome = "invalid_output"
 	OutcomeBelowTarget   AttemptOutcome = "below_target"
 )
 
+// Error groups identical failures into one "model outcome ×N (reason)" entry each.
 func (e *AttemptsExhaustedError) Error() string {
-	return fmt.Sprintf("openrouter: all %d attempts failed, timed out, or fell below target quality: %+v", len(e.Attempts), e.Attempts)
+	type key struct {
+		model   string
+		outcome AttemptOutcome
+		reason  string
+	}
+	var order []key
+	counts := map[key]int{}
+	for _, a := range e.Attempts {
+		k := key{a.Model, a.Outcome, a.Reason}
+		if counts[k] == 0 {
+			order = append(order, k)
+		}
+		counts[k]++
+	}
+	parts := make([]string, len(order))
+	for i, k := range order {
+		parts[i] = fmt.Sprintf("%s %s ×%d (%s)", k.model, k.outcome, counts[k], k.reason)
+	}
+	return fmt.Sprintf("openrouter: all %d attempts failed: %s", len(e.Attempts), strings.Join(parts, "; "))
 }

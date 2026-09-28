@@ -49,7 +49,7 @@ func validateOutcome(f EntryFields) error {
 		if f.Role == RoleReviewer && f.Quality != "" {
 			return errors.New("a reviewer's own output is never rated")
 		}
-	case OutcomeFailed, OutcomeTimeout, OutcomeAborted, OutcomeInvalidOutput:
+	case OutcomeFailed, OutcomeTimeout, OutcomeInvalidOutput:
 		if f.Quality != model.QualityUnusable {
 			return errors.New("a failed entry's quality must be unusable")
 		}

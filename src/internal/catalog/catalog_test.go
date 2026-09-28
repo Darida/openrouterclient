@@ -24,47 +24,6 @@ func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
 	return &Catalog{URL: server.URL, HTTP: server.Client()}, &fetches
 }
 
-func TestCatalogModelID_whenLogNameHasFreeVariant_thenReturnsFreeID(t *testing.T) {
-	// Arrange
-	c, _ := newCatalog(t)
-
-	// Act
-	got := c.ModelID("liquid/lfm-2.5-2.6b-20260811:free")
-
-	// Assert
-	if got != "liquid/lfm-2.5-2.6b:free" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestCatalogModelID_whenLogNameHasNoVariant_thenReturnsPaidID(t *testing.T) {
-	// Arrange
-	c, _ := newCatalog(t)
-
-	// Act
-	got := c.ModelID("liquid/lfm-2.5-2.6b-20260811")
-
-	// Assert
-	if got != "liquid/lfm-2.5-2.6b" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestCatalogModelID_whenLogNameUnknown_thenPanics(t *testing.T) {
-	// Arrange
-	c, _ := newCatalog(t)
-
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	c.ModelID("vendor/unknown-20260101:free")
-}
-
 func TestCatalogFreeStructuredModels_whenListed_thenOnlyFreeWithStructuredOutputs(t *testing.T) {
 	// Arrange
 	c, _ := newCatalog(t)

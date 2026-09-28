@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Darida/openrouterclient/src/internal/generationlog"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/model"
@@ -32,6 +31,9 @@ var requirements = model.TextGenerationRequirements{
 	TargetQuality:         model.QualityHigh,
 	Tag:                   "fruit-test",
 }
+
+// The fake catalog's only candidate, so every attempt picks it.
+const pickedModel = "slow/model:free"
 
 // chatRequest is the part of a chat payload the fake server routes on.
 type chatRequest struct {
@@ -51,7 +53,6 @@ type fakeOpenRouter struct {
 	mu          sync.Mutex
 	generations []chatRequest
 	reviews     int
-	logLookups  int
 	generate    func(w http.ResponseWriter, r *http.Request, n int)
 	review      func(n int) string
 }
@@ -77,12 +78,6 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		f.mu.Unlock()
 		f.generate(w, r, n)
 	})
-	mux.HandleFunc("/generation", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.logLookups++
-		f.mu.Unlock()
-		fmt.Fprint(w, `{"data":{"model":"slow/model-20260101:free"}}`)
-	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"data":[{"id":"slow/model:free","canonical_slug":"slow/model-20260101","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]}}]}`)
 	})
@@ -90,10 +85,8 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 	t.Cleanup(server.Close)
 	settings := Settings{
 		ChatURL:          server.URL + "/chat",
-		GenerationLogURL: server.URL + "/generation",
 		CatalogURL:       server.URL + "/models",
-		Hedge:            hedge.Timing{MaxAttempts: 2, Stagger: 5 * time.Second, AbortGrace: 50 * time.Millisecond, AttemptTimeout: 200 * time.Millisecond},
-		GenerationLog:    generationlog.Timing{Window: 500 * time.Millisecond, PollInterval: 10 * time.Millisecond},
+		Hedge:            hedge.Timing{MaxAttempts: 2, Stagger: 5 * time.Second, AttemptTimeout: 200 * time.Millisecond},
 		MaxRounds:           3,
 		RejectionRetryDelay: 10 * time.Millisecond,
 	}
@@ -140,8 +133,8 @@ func TestEngineGenerateText_whenReviewHasNoNotes_thenReturnsHighQuality(t *testi
 	got, err := engine.GenerateText(context.Background(), requirements)
 
 	// Assert
-	if err != nil || got.Review == nil || got.Review.Quality != model.QualityHigh || got.Model != "writer/free" {
-		t.Fatalf("got %+v, %v; want high quality from writer/free", got, err)
+	if err != nil || got.Review == nil || got.Review.Quality != model.QualityHigh || got.Model != pickedModel {
+		t.Fatalf("got %+v, %v; want high quality from %s", got, err, pickedModel)
 	}
 }
 
@@ -191,7 +184,7 @@ func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *t
 	}
 }
 
-func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsModelFromGenerationLog(t *testing.T) {
+func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -334,7 +327,7 @@ func rateLimitedFirst(w http.ResponseWriter, r *http.Request, n int) {
 	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 }
 
-func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstModelInMessage(t *testing.T) {
+func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstPickedModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noNotes}
 	_, settings := fake.serve(t)
@@ -349,28 +342,11 @@ func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstModelInMess
 
 	// Assert
 	for _, e := range entries {
-		if f := e.Fields(); f.GenerationID == "gen-limited" && f.Model == "qwen/qwen3.8-27b:free" && f.Outcome == history.OutcomeFailed {
+		if f := e.Fields(); f.GenerationID == "gen-limited" && f.Model == pickedModel && f.Outcome == history.OutcomeFailed {
 			return
 		}
 	}
-	t.Fatalf("history %+v has no failed entry for gen-limited against qwen/qwen3.8-27b:free", entries)
-}
-
-func TestEngineGenerateText_whenRateLimited_thenNeverPollsGenerationLog(t *testing.T) {
-	// Arrange
-	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noNotes}
-	_, settings := fake.serve(t)
-	engine, _ := newEngine(t, settings)
-
-	// Act
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("GenerateText failed: %v", err)
-	}
-
-	// Assert
-	if fake.logLookups != 0 {
-		t.Fatalf("generation log polled %d times; want 0", fake.logLookups)
-	}
+	t.Fatalf("history %+v has no failed entry for gen-limited against %s", entries, pickedModel)
 }
 
 func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *testing.T) {

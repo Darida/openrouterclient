@@ -25,7 +25,6 @@ type Catalog struct {
 	mu        sync.Mutex
 	fetchedAt time.Time
 	models    []entry
-	byLog     map[string][]string
 }
 
 // FreeStructuredModels lists the free models that can answer with a strict
@@ -45,31 +44,8 @@ func (c *Catalog) FreeStructuredModels() []string {
 	return ids
 }
 
-// ModelID translates the dated name OpenRouter's generation log uses
-// ("vendor/model-20260811:free") into the model id chat responses use
-// ("vendor/model:free"). A miss refetches first, since a model may be newer
-// than the cache; it panics unless exactly one model matches.
-func (c *Catalog) ModelID(logName string) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if time.Since(c.fetchedAt) >= cacheTTL || len(c.byLog[logName]) == 0 {
-		c.refresh()
-	}
-	ids := c.byLog[logName]
-	if len(ids) != 1 {
-		panic(fmt.Sprintf("catalog: log model %q matches %d catalog models %v, want exactly 1", logName, len(ids), ids))
-	}
-	return ids[0]
-}
-
 func (c *Catalog) refresh() {
-	models := c.fetch()
-	byLog := map[string][]string{}
-	for _, m := range models {
-		key := logNameFor(m.ID, m.CanonicalSlug)
-		byLog[key] = append(byLog[key], m.ID)
-	}
-	c.models, c.byLog, c.fetchedAt = models, byLog, time.Now()
+	c.models, c.fetchedAt = c.fetch(), time.Now()
 }
 
 func (c *Catalog) fetch() []entry {
@@ -98,18 +74,9 @@ func (c *Catalog) fetch() []entry {
 		panic(fmt.Sprintf("catalog: %s returned no models: %v", c.URL, err))
 	}
 	for _, m := range parsed.Data {
-		if m.ID == "" || m.CanonicalSlug == "" {
-			panic(fmt.Sprintf("catalog: model entry without id or canonical_slug: %+v", m))
+		if m.ID == "" {
+			panic(fmt.Sprintf("catalog: model entry without id: %+v", m))
 		}
 	}
 	return parsed.Data
-}
-
-// Paid and free variants share one canonical slug; the log tells them apart
-// by keeping the id's ":variant" suffix.
-func logNameFor(id, canonicalSlug string) string {
-	if i := strings.LastIndex(id, ":"); i != -1 {
-		return canonicalSlug + id[i:]
-	}
-	return canonicalSlug
 }

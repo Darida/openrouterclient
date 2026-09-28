@@ -9,31 +9,16 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-func TestChatParseResponse_whenModelMissing_thenPanics(t *testing.T) {
-	// Arrange
-	body := []byte(`{"choices":[{"message":{"content":"{}"}}]}`)
-
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	ParseResponse(body)
-}
-
-func TestChatParseResponse_whenContentNotJSON_thenErrorsWithModel(t *testing.T) {
+func TestChatParseResponse_whenContentNotJSON_thenErrors(t *testing.T) {
 	// Arrange
 	body := []byte(`{"model":"m/free","choices":[{"message":{"content":"not json"}}]}`)
 
 	// Act
-	got, err := ParseResponse(body)
+	_, err := ParseResponse(body)
 
 	// Assert
-	if err == nil || got.Model != "m/free" {
-		t.Fatalf("got %+v, %v; want an error attributed to m/free", got, err)
+	if err == nil {
+		t.Fatal("expected an error for non-JSON content")
 	}
 }
 
@@ -45,7 +30,7 @@ func TestChatParseResponse_whenContentIsJSON_thenReturnsIt(t *testing.T) {
 	got, err := ParseResponse(body)
 
 	// Assert
-	if err != nil || string(got.Content) != `{"a":1}` {
+	if err != nil || string(got) != `{"a":1}` {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
@@ -102,30 +87,15 @@ func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
 	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"))
 }
 
-func TestProviderErrorRateLimitedModel_whenRawNamesModel_thenReturnsIt(t *testing.T) {
+func TestProviderErrorError_whenMetadataHasRaw_thenUsesItsFirstSentence(t *testing.T) {
 	// Arrange
 	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`))
 
 	// Act
-	got := providerErr.RateLimitedModel()
+	got := providerErr.Error()
 
 	// Assert
-	if got != "qwen/qwen3.8-27b:free" {
+	if got != "provider error 429: qwen/qwen3.8-27b:free is temporarily rate-limited upstream" {
 		t.Fatalf("got %q", got)
 	}
-}
-
-func TestProviderErrorRateLimitedModel_whenRawWordingUnknown_thenPanics(t *testing.T) {
-	// Arrange
-	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"Too many requests"}}}`))
-
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	providerErr.RateLimitedModel()
 }

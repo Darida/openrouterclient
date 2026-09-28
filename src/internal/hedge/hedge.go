@@ -7,19 +7,14 @@ import (
 	"time"
 )
 
-// Context causes an attempt sees when the hedge, not the caller, cuts it short.
-var (
-	ErrAborted = errors.New("aborted after another attempt won")
-	ErrTimeout = errors.New("attempt timed out")
-)
+// ErrTimeout is the context cause an attempt sees when its own time runs out.
+var ErrTimeout = errors.New("attempt timed out")
 
 type Timing struct {
 	MaxAttempts int
 	// Attempt N+1 launches once attempt N fails or has been pending this long.
 	Stagger time.Duration
-	// Once any attempt wins, a straggler is aborted at whichever is later: this
-	// long past the win, or Stagger past its own launch.
-	AbortGrace     time.Duration
+	// Every attempt gets this long, win or not; a straggler is never cut short.
 	AttemptTimeout time.Duration
 }
 
@@ -28,7 +23,6 @@ type Timing struct {
 type Race[T any] struct {
 	mu        sync.Mutex
 	winner    int
-	winAt     time.Time
 	winResult T
 	won       chan struct{}
 	settled   chan struct{}
@@ -36,10 +30,8 @@ type Race[T any] struct {
 }
 
 type handle[T any] struct {
-	launched time.Time
-	cancel   context.CancelCauseFunc
-	done     chan struct{}
-	result   T
+	done   chan struct{}
+	result T
 }
 
 // Run hedges attempt across up to MaxAttempts staggered parallel calls.
@@ -50,7 +42,9 @@ func Run[T any](ctx context.Context, timing Timing, attempt func(ctx context.Con
 	go func() {
 		defer close(r.settled)
 		r.launchAll(ctx, timing, attempt)
-		r.settleStragglers(timing)
+		for _, h := range r.handles {
+			<-h.done
+		}
 	}()
 	select {
 	case <-r.won:
@@ -65,8 +59,7 @@ func (r *Race[T]) Winner() (T, bool) {
 	return r.winResult, r.winner != -1
 }
 
-// Settled blocks until every launched attempt has finished, aborting
-// stragglers at their deadline, and returns them all.
+// Settled blocks until every launched attempt has finished and returns them all.
 func (r *Race[T]) Settled() Outcome[T] {
 	<-r.settled
 	results := make([]T, len(r.handles))
@@ -98,9 +91,8 @@ func (r *Race[T]) launchAll(ctx context.Context, timing Timing, attempt func(ctx
 
 func (r *Race[T]) launch(ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, bool)) {
 	index := len(r.handles)
-	attemptCtx, cancel := context.WithCancelCause(ctx)
-	timeoutCtx, cancelTimeout := context.WithTimeoutCause(attemptCtx, timing.AttemptTimeout, ErrTimeout)
-	h := &handle[T]{launched: time.Now(), cancel: cancel, done: make(chan struct{})}
+	timeoutCtx, cancelTimeout := context.WithTimeoutCause(ctx, timing.AttemptTimeout, ErrTimeout)
+	h := &handle[T]{done: make(chan struct{})}
 	r.handles = append(r.handles, h)
 	go func() {
 		defer close(h.done)
@@ -113,34 +105,10 @@ func (r *Race[T]) launch(ctx context.Context, timing Timing, attempt func(ctx co
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.winner == -1 {
-			r.winner, r.winAt, r.winResult = index, time.Now(), result
+			r.winner, r.winResult = index, result
 			close(r.won)
 		}
 	}()
-}
-
-func (r *Race[T]) settleStragglers(timing Timing) {
-	for _, h := range r.handles {
-		select {
-		case <-h.done:
-			continue
-		case <-r.won:
-		}
-		r.mu.Lock()
-		deadline := later(r.winAt.Add(timing.AbortGrace), h.launched.Add(timing.Stagger))
-		r.mu.Unlock()
-		abort := time.NewTimer(time.Until(deadline))
-		select {
-		case <-h.done:
-		case <-abort.C:
-			h.cancel(ErrAborted)
-			<-h.done
-		}
-		abort.Stop()
-	}
-	for _, h := range r.handles {
-		h.cancel(nil)
-	}
 }
 
 type Outcome[T any] struct {
@@ -158,11 +126,4 @@ func isClosed(ch chan struct{}) bool {
 	default:
 		return false
 	}
-}
-
-func later(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
 }
