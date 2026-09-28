@@ -40,12 +40,14 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 	}
 	defer resp.Body.Close()
 	generationID := resp.Header.Get("X-Generation-Id")
+	e.logger.Info("openrouter: response headers", "status", resp.StatusCode, "generationId", generationID, "provider", resp.Header.Get("X-Provider-Name"), "latency", time.Since(start))
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return e.interrupted(ctx, generationID, start, err.Error()), false
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		e.logger.Warn("openrouter: non-200 response", "status", resp.StatusCode, "generationId", generationID, "body", string(body))
 		if !retryableStatuses[resp.StatusCode] {
 			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
 		}
@@ -82,6 +84,7 @@ func (e *Engine) interrupted(ctx context.Context, generationID string, start tim
 	}
 	result := attempt{generationID: generationID, outcome: outcome, latency: latency, reason: reason}
 	if generationID != "" {
+		e.logger.Warn("openrouter: resolving model from generation log", "generationId", generationID, "outcome", outcome, "reason", reason)
 		result.model = e.log.ResolveModel(generationID)
 	}
 	return result
