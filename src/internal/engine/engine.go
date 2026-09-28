@@ -1,0 +1,190 @@
+package engine
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Darida/openrouterclient/src/internal/chat"
+	"github.com/Darida/openrouterclient/src/internal/generationlog"
+	"github.com/Darida/openrouterclient/src/internal/hedge"
+	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/quality"
+	"github.com/Darida/openrouterclient/src/internal/review"
+	"github.com/Darida/openrouterclient/src/internal/schema"
+	"github.com/Darida/openrouterclient/src/model"
+)
+
+type Engine struct {
+	settings Settings
+	apiKey   string
+	http     *http.Client
+	log      *generationlog.Client
+	history  *history.Store
+	logger   *slog.Logger
+}
+
+func New(settings Settings, apiKey string, store *history.Store, logger *slog.Logger) *Engine {
+	httpClient := &http.Client{}
+	return &Engine{
+		settings: settings,
+		apiKey:   apiKey,
+		http:     httpClient,
+		log:      &generationlog.Client{URL: settings.GenerationLogURL, APIKey: apiKey, HTTP: httpClient, Timing: settings.GenerationLog},
+		history:  store,
+		logger:   logger,
+	}
+}
+
+// GenerateText generates, reviews, and corrects until a result meets
+// TargetQuality or MaxRounds runs out. Every correction resends the original
+// prompt, the latest reply, and its review notes.
+func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequirements) (model.GeneratedText, error) {
+	validateRequirements(req)
+	outputValidator := schema.Compile(req.OutputSchema.Name, req.OutputSchema.Schema)
+	var failures []model.FailedAttempt
+	messages := []chat.Message{chat.UserMessage(req.Prompt)}
+
+	for round := 1; round <= e.settings.MaxRounds; round++ {
+		excluded := e.excludedModels()
+		e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
+		gen, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality, &failures)
+		if err := ctx.Err(); err != nil {
+			return model.GeneratedText{}, err
+		}
+		if !ok {
+			return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+		}
+
+		reviewMessages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
+		rev, ok := e.hedge(ctx, chat.BuildPayload(reviewMessages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "", &failures)
+		if !ok {
+			e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
+			if err := ctx.Err(); err != nil {
+				return model.GeneratedText{}, err
+			}
+			return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+		}
+
+		verdict := review.Parse(rev.content)
+		rated := quality.FromNoteCount(len(verdict.Notes))
+		notes := review.FormatNotes(verdict.Notes)
+		e.recordGeneration(gen, rated, req.TargetQuality, notes)
+		e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes))
+
+		if !quality.Below(rated, req.TargetQuality) {
+			return model.GeneratedText{
+				Content:      gen.content,
+				Model:        gen.model,
+				GenerationID: gen.generationID,
+				Review:       model.Review{Verdict: verdict, Quality: rated, Model: rev.model, GenerationID: rev.generationID},
+			}, nil
+		}
+		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: gen.model, GenerationID: gen.generationID, Quality: rated, Reason: notes})
+		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.CorrectionPrompt(verdict.Notes))}
+	}
+	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+}
+
+func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
+	return e.history.RecordManual(generationID, q, reason, time.Now())
+}
+
+// hedge runs one hedged request and records every attempt except the
+// generator's winner, whose quality the review decides. Failures are
+// appended to failures.
+func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.RawMessage) error, role history.Role, target model.Quality, failures *[]model.FailedAttempt) (attempt, bool) {
+	outcome := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
+		e.logger.Info("openrouter: attempt launched", "role", role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts)
+		return e.runAttempt(attemptCtx, payload, validate)
+	})
+
+	for i, a := range outcome.Results {
+		if a.canceled {
+			continue
+		}
+		if a.outcome != history.OutcomeSuccess {
+			e.logger.Warn("openrouter: attempt failed", "role", role, "attempt", i+1, "model", a.model, "generationId", a.generationID, "outcome", a.outcome, "latency", a.latency, "reason", a.reason)
+			*failures = append(*failures, model.FailedAttempt{Outcome: publicOutcome(a.outcome), Model: a.model, GenerationID: a.generationID, Quality: model.QualityUnusable, Reason: rolePrefix(role) + a.reason})
+			if a.model != "" {
+				e.history.Append(e.entry(a, role, model.QualityUnusable, target, a.reason))
+			}
+			continue
+		}
+		e.logger.Info("openrouter: attempt succeeded", "role", role, "attempt", i+1, "model", a.model, "latency", a.latency)
+		switch {
+		case role == history.RoleReviewer:
+			e.history.Append(e.entry(a, role, "", "", ""))
+		case i != outcome.Winner:
+			e.history.Append(e.entry(a, role, "", target, "succeeded after another attempt won"))
+		}
+	}
+	if outcome.Winner == -1 {
+		return attempt{}, false
+	}
+	return outcome.Results[outcome.Winner], true
+}
+
+func (e *Engine) recordGeneration(gen attempt, rated, target model.Quality, reason string) {
+	e.history.Append(e.entry(gen, history.RoleGenerator, rated, target, reason))
+}
+
+func (e *Engine) entry(a attempt, role history.Role, q, target model.Quality, reason string) history.Entry {
+	return history.Entry{
+		Timestamp:      time.Now().UTC(),
+		Model:          a.model,
+		GenerationID:   a.generationID,
+		Role:           role,
+		Source:         history.SourceAuto,
+		Outcome:        a.outcome,
+		Quality:        q,
+		TargetQuality:  target,
+		LatencySeconds: a.latency.Seconds(),
+		Reason:         reason,
+	}
+}
+
+func (e *Engine) excludedModels() []string {
+	exclusions := e.history.Exclusions(time.Now())
+	if len(exclusions.BelowCap) > 0 {
+		e.logger.Info("openrouter: models with recent failures below the exclusion cap", "models", strings.Join(exclusions.BelowCap, ", "))
+	}
+	if len(exclusions.Excluded) > 0 {
+		e.logger.Info("openrouter: excluding models with high failure rates", "models", strings.Join(exclusions.Excluded, ", "))
+	}
+	return exclusions.Excluded
+}
+
+func validateRequirements(req model.TextGenerationRequirements) {
+	if req.Prompt == "" || req.ReviewRulesPrompt == "" || req.OutputSchema.Name == "" || len(req.OutputSchema.Schema) == 0 {
+		panic(fmt.Sprintf("engine: Prompt, ReviewRulesPrompt, OutputSchema.Name, and OutputSchema.Schema are all required: %+v", req))
+	}
+	if !quality.IsRating(req.TargetQuality) {
+		panic(fmt.Sprintf("engine: TargetQuality must be high, medium, or low, got %q", req.TargetQuality))
+	}
+}
+
+func publicOutcome(o history.Outcome) model.AttemptOutcome {
+	switch o {
+	case history.OutcomeFailed:
+		return model.OutcomeFailed
+	case history.OutcomeTimeout:
+		return model.OutcomeTimeout
+	case history.OutcomeAborted:
+		return model.OutcomeAborted
+	case history.OutcomeInvalidOutput:
+		return model.OutcomeInvalidOutput
+	}
+	panic(fmt.Sprintf("engine: no public outcome for %q", o))
+}
+
+func rolePrefix(role history.Role) string {
+	if role == history.RoleReviewer {
+		return "review: "
+	}
+	return ""
+}
