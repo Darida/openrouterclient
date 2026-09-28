@@ -1,24 +1,34 @@
 #!/bin/sh
-# Usage: bin/generate.sh <requirements.json>
+# Usage: bin/generate.sh --key=<openrouter-api-key> <requirements.json>
 # Prints the reviewed result as JSON on stdout; logs go to stderr.
 set -eu
 
-if [ "$#" -ne 1 ]; then
-    echo "usage: bin/generate.sh <requirements.json>" >&2
+usage() {
+    echo "usage: bin/generate.sh --key=<openrouter-api-key> <requirements.json>" >&2
     exit 2
-fi
-INPUT="$(realpath "$1")"
-REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+}
 
-if ! OPENROUTER_API_KEY="$(git -C "$REPO_ROOT" config --get openrouter.githubapikey)"; then
-    echo "error: no OpenRouter API key in git config. Set it for this repository with:" >&2
-    echo "  git config --local openrouter.githubapikey 'YOUR_KEY_HERE'" >&2
-    exit 1
+KEY=""
+INPUT=""
+for arg in "$@"; do
+    case "$arg" in
+        --key=*) KEY="${arg#--key=}" ;;
+        -*) echo "error: unknown option: $arg" >&2; usage ;;
+        *)
+            [ -z "$INPUT" ] || usage
+            INPUT="$arg"
+            ;;
+    esac
+done
+if [ -z "$KEY" ] || [ -z "$INPUT" ]; then
+    usage
 fi
-export OPENROUTER_API_KEY
+INPUT="$(realpath "$INPUT")"
+REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
 # Per-user state, never in the repo: see the XDG Base Directory spec's state dir.
 HISTORY_DIR="$HOME/.local/state/openrouterclient"
 mkdir -p "$HISTORY_DIR"
 
-exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$HISTORY_DIR/history.json"
+# Passed by environment so the key stays out of the Go program's argv.
+OPENROUTER_API_KEY="$KEY" exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$HISTORY_DIR/history.json"

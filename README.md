@@ -104,14 +104,13 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate.sh bin/example-requirements.json
+bin/generate.sh --key=YOUR_OPENROUTER_KEY bin/example-requirements.json
 ```
 
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`, and
-`targetQuality`. See `bin/example-requirements.json`. It reads the API key
-from `git config --get openrouter.githubapikey`; set it with
-`git config --local openrouter.githubapikey 'YOUR_KEY'`. History goes to
+`targetQuality`. See `bin/example-requirements.json`. The OpenRouter API
+key is required as `--key=...`. History goes to
 `~/.local/state/openrouterclient/history.json`, which is per user and per
 machine and never inside the repo.
 
