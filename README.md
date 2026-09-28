@@ -53,7 +53,11 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   60s with no response. There are at most 3 attempts. Once one wins, the
   others get whichever is later of 30s past the win or 60s of their own
   runtime, and are then aborted. Each attempt also has a hard timeout.
-  Both generation and review calls are hedged this way.
+  Both generation and review calls are hedged this way. A call moves on the
+  moment an attempt wins; stragglers are aborted, resolved, and recorded in
+  the background, and `Client.Close` waits for that before exit. A failed
+  attempt counts as done immediately, and its model is resolved from the
+  log afterwards, so a slow log never delays the next attempt.
 - **Attribution.** Every attempt OpenRouter accepted, which is known from
   its `X-Generation-Id` header, is attributed to a real model. An attempt
   that times out, breaks mid-body, is aborted after another attempt won, or

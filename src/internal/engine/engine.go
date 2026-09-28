@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/catalog"
@@ -28,6 +29,8 @@ type Engine struct {
 	catalog  *catalog.Catalog
 	history  *history.Store
 	logger   *slog.Logger
+	// Stragglers still settling after their race was won.
+	background sync.WaitGroup
 }
 
 func New(settings Settings, apiKey string, store *history.Store, logger *slog.Logger) *Engine {
@@ -104,16 +107,29 @@ func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationR
 	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, failures, true
 }
 
-// hedge runs one hedged request. The generator's winner is left unrecorded,
-// because its quality comes from the review.
+// Close blocks until every straggler from an already-won race is settled and recorded.
+func (e *Engine) Close() {
+	e.background.Wait()
+}
+
+// hedge returns as soon as an attempt wins, recording the rest in the
+// background; failures are returned only when nothing won. The generator's
+// winner is left unrecorded, because its quality comes from the review.
 func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.RawMessage) error, role history.Role, target model.Quality) (attempt, []model.FailedAttempt, bool) {
-	outcome := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
+	race := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
 		e.logger.Info("openrouter: attempt launched", "role", role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts)
 		return e.runAttempt(attemptCtx, payload, validate)
 	})
-	failures := e.recordAttempts(outcome, role, target)
-	winner, ok := outcome.Winner()
-	return winner, failures, ok
+	winner, ok := race.Winner()
+	if !ok {
+		return attempt{}, e.recordAttempts(race.Settled(), role, target), false
+	}
+	e.background.Add(1)
+	go func() {
+		defer e.background.Done()
+		e.recordAttempts(race.Settled(), role, target)
+	}()
+	return winner, nil, true
 }
 
 func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], role history.Role, target model.Quality) []model.FailedAttempt {
@@ -121,6 +137,10 @@ func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], role history.Rol
 	for i, a := range outcome.Results {
 		if a.canceled {
 			continue
+		}
+		if a.model == "" && a.generationID != "" {
+			e.logger.Warn("openrouter: resolving model from generation log", "role", role, "attempt", i+1, "generationId", a.generationID, "outcome", a.outcome, "reason", a.reason)
+			a.model = e.catalog.ModelID(e.log.ResolveModel(a.generationID))
 		}
 		if a.outcome != history.OutcomeSuccess {
 			e.logger.Warn("openrouter: attempt failed", "role", role, "attempt", i+1, "model", a.model, "generationId", a.generationID, "outcome", a.outcome, "latency", a.latency, "reason", a.reason)

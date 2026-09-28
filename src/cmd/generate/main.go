@@ -35,12 +35,15 @@ func main() {
 	var exhausted *model.AttemptsExhaustedError
 	if errors.As(err, &exhausted) {
 		printJSON(os.Stderr, exhausted)
-		fail(err.Error())
 	}
+	if err == nil {
+		printJSON(os.Stdout, result)
+	}
+	// Stragglers from won races are still being recorded; exiting first would drop them.
+	client.Close()
 	if err != nil {
 		fail(err.Error())
 	}
-	printJSON(os.Stdout, result)
 }
 
 func readRequirements(path string) model.TextGenerationRequirements {

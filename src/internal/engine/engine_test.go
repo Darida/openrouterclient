@@ -209,6 +209,7 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsModelFromGenerationLo
 	}
 
 	// Act
+	engine.Close()
 	entries := readHistory(t, path)
 
 	// Assert
@@ -239,6 +240,7 @@ func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t 
 	}
 
 	// Act
+	engine.Close()
 	entries := readHistory(t, path)
 
 	// Assert
@@ -292,6 +294,7 @@ func TestEngineGenerateText_whenProviderErrorIn200Body_thenRecordsFailureAgainst
 	}
 
 	// Act
+	engine.Close()
 	entries := readHistory(t, path)
 
 	// Assert
@@ -323,6 +326,7 @@ func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstModelInMess
 	}
 
 	// Act
+	engine.Close()
 	entries := readHistory(t, path)
 
 	// Assert

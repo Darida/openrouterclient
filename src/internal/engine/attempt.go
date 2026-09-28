@@ -10,7 +10,8 @@ import (
 
 // attempt is one settled chat request.
 type attempt struct {
-	// Empty only when OpenRouter never accepted the request.
+	// Empty when OpenRouter never accepted the request, or until
+	// recordAttempts resolves it from the generation log.
 	model        string
 	generationID string
 	outcome      history.Outcome

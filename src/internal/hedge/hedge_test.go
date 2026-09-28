@@ -15,7 +15,7 @@ func TestRun_whenFirstAttemptFails_thenSecondLaunchesBeforeStagger(t *testing.T)
 	start := time.Now()
 
 	// Act
-	outcome := Run(context.Background(), fastTiming, attempt)
+	outcome := Run(context.Background(), fastTiming, attempt).Settled()
 
 	// Assert
 	if !outcome.IsWinner(1) || time.Since(start) >= fastTiming.Stagger {
@@ -35,7 +35,7 @@ func TestRun_whenStragglerOutlivesGrace_thenItSeesErrAborted(t *testing.T) {
 	}
 
 	// Act
-	outcome := Run(context.Background(), timing, attempt)
+	outcome := Run(context.Background(), timing, attempt).Settled()
 
 	// Assert
 	if !errors.Is(outcome.Results[0], ErrAborted) {
@@ -52,7 +52,7 @@ func TestRun_whenAttemptExceedsTimeout_thenItSeesErrTimeout(t *testing.T) {
 	}
 
 	// Act
-	outcome := Run(context.Background(), timing, attempt)
+	outcome := Run(context.Background(), timing, attempt).Settled()
 
 	// Assert
 	if !errors.Is(outcome.Results[0], ErrTimeout) {
@@ -65,10 +65,31 @@ func TestRun_whenEveryAttemptFails_thenNoWinner(t *testing.T) {
 	attempt := func(ctx context.Context, num int) (int, bool) { return num, false }
 
 	// Act
-	outcome := Run(context.Background(), fastTiming, attempt)
+	race := Run(context.Background(), fastTiming, attempt)
 
 	// Assert
-	if _, won := outcome.Winner(); won || len(outcome.Results) != 3 {
-		t.Fatalf("got %+v; want 3 results and no winner", outcome)
+	if _, won := race.Winner(); won || len(race.Settled().Results) != 3 {
+		t.Fatalf("got %+v; want 3 results and no winner", race.Settled())
+	}
+}
+
+func TestRun_whenAttemptWinsWhileStragglerRuns_thenReturnsBeforeStragglerSettles(t *testing.T) {
+	// Arrange
+	timing := Timing{MaxAttempts: 2, Stagger: 20 * time.Millisecond, AbortGrace: 2 * time.Second, AttemptTimeout: 10 * time.Second}
+	attempt := func(ctx context.Context, num int) (int, bool) {
+		if num == 2 {
+			return num, true
+		}
+		<-ctx.Done()
+		return num, false
+	}
+	start := time.Now()
+
+	// Act
+	race := Run(context.Background(), timing, attempt)
+
+	// Assert
+	if winner, won := race.Winner(); !won || winner != 2 || time.Since(start) >= timing.AbortGrace {
+		t.Fatalf("winner=%d won=%v after %s; want attempt 2 before the straggler's grace ends", winner, won, time.Since(start))
 	}
 }

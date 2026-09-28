@@ -91,8 +91,8 @@ func (e *Engine) providerFailure(ctx context.Context, generationID string, start
 	return attempt{model: providerErr.RateLimitedModel(), generationID: generationID, outcome: history.OutcomeFailed, latency: time.Since(start), reason: reason}
 }
 
-// X-Generation-Id arrives with the headers, so a request that failed after
-// that still resolves to a real model through the generation log.
+// interrupted leaves model empty for recordAttempts to resolve from the
+// generation log, so a slow log never holds up the hedge's next attempt.
 func (e *Engine) interrupted(ctx context.Context, generationID string, start time.Time, reason string) attempt {
 	latency := time.Since(start)
 	outcome := history.OutcomeFailed
@@ -104,10 +104,5 @@ func (e *Engine) interrupted(ctx context.Context, generationID string, start tim
 	case ctx.Err() != nil:
 		return attempt{canceled: true, generationID: generationID, latency: latency, reason: reason}
 	}
-	result := attempt{generationID: generationID, outcome: outcome, latency: latency, reason: reason}
-	if generationID != "" {
-		e.logger.Warn("openrouter: resolving model from generation log", "generationId", generationID, "outcome", outcome, "reason", reason)
-		result.model = e.catalog.ModelID(e.log.ResolveModel(generationID))
-	}
-	return result
+	return attempt{generationID: generationID, outcome: outcome, latency: latency, reason: reason}
 }
