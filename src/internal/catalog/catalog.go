@@ -30,9 +30,8 @@ type Catalog struct {
 	models    []entry
 }
 
-// Candidates lists the models of tier that can answer with a strict
-// json_schema response format, which every request here uses. It panics on a
-// candidate whose price isn't a non-negative number.
+// Candidates lists tier's models that support strict json_schema output. It
+// panics on a candidate whose price is negative or unparseable.
 func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	c.mu.Lock()
 	defer c.mu.Unlock()

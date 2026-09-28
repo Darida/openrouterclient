@@ -202,8 +202,12 @@ func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason strin
 // the cheapest by estimated cost. It panics when nothing is left to ask.
 func (e *Engine) candidateModels(tier model.ModelTier, tag string, promptTokens, maxTokens int) []string {
 	excluded := e.excludedModels(tag)
+	available := e.catalog.Candidates(tier)
+	if len(available) == 0 {
+		panic(fmt.Sprintf("engine: OpenRouter's catalog lists no %s structured-output models", tier))
+	}
 	var models []catalog.Model
-	for _, m := range e.catalog.Candidates(tier) {
+	for _, m := range available {
 		if !slices.Contains(excluded, m.ID) {
 			models = append(models, m)
 		}
