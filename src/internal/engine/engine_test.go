@@ -413,3 +413,30 @@ func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t
 		t.Fatalf("err=%v reviews=%d; want AttemptsExhaustedError and no review", err, fake.reviews)
 	}
 }
+
+func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) { reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`) },
+		review:   noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	unreviewed := requirements
+	unreviewed.OutputValidationRules = ""
+	if _, err := engine.GenerateText(context.Background(), unreviewed); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+
+	// Act
+	engine.Close()
+	entries := readHistory(t, path)
+
+	// Assert
+	for _, e := range entries {
+		if f := e.Fields(); f.GenerationID == "gen-1" && f.Quality == model.QualityHigh {
+			return
+		}
+	}
+	t.Fatalf("history %+v has no high entry for gen-1", entries)
+}
