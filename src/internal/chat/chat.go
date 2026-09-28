@@ -50,7 +50,6 @@ func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, m
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},
 		},
 		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false},
-		"reasoning": map[string]any{"exclude": true, "effort": "low"},
 		"messages":  messages,
 	}
 	body, err := json.Marshal(payload)
