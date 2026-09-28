@@ -39,6 +39,8 @@ docs). All Go code lives under `src/`:
   - `generationlog`: polls OpenRouter's `/api/v1/generation` log.
   - `history`: stores outcomes and computes exclusions.
   - `review`: holds the fixed review prompt and schema.
+  - `quality`: ranks qualities and derives one from a review's note count.
+  - `schema`: validates output against the requested JSON Schema.
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
@@ -75,13 +77,21 @@ docs). All Go code lives under `src/`:
 
 This library never falls back and never swallows a failure.
 
-- `GenerateText` returns an error in exactly one case: every allowed
+- `GenerateText` returns an error in exactly two cases: every allowed
   attempt failed, timed out, or fell below `TargetQuality`
-  (`*AttemptsExhaustedError`, which carries every attempt's raw reason).
+  (`*AttemptsExhaustedError`, which carries every attempt's raw reason), or
+  the caller's context ended (`ctx.Err()`). Attempts cut short by the
+  caller's context are no evidence about any model, so they are not
+  recorded.
+- Only transient chat statuses (408, 429, 500, 502, 503, 504) count as a
+  model failure. Any other non-200 status means the request or the key is
+  wrong, so it panics.
 - Anything unexpected panics, with the full raw body in the message. That
-  includes a response with no `model`, a generation log that never
-  resolves or names a different model than the response, an invalid
-  `TargetQuality`, and an unreadable or malformed history file.
+  includes a response with no `model`, a 200 response with no
+  `X-Generation-Id`, a generation log that never resolves or answers with
+  an unexpected status, an invalid `OutputSchema` or `TargetQuality`, and
+  an unreadable or malformed history file. A panic inside a parallel
+  attempt crashes the process.
 - `New` returns an error for any missing `Config` field. Every field is
   required and none has a default.
 

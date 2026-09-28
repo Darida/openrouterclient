@@ -41,8 +41,9 @@ test or build step, you may hand-run that same command while iterating on
 a fix. Go back to `git/push-all` as the real check once you believe it's
 fixed. A hand-run pass never substitutes for it.
 
-Tests never call the live OpenRouter API. HTTP traffic is replayed from
-recorded cassettes, which `cassette-check` tracks.
+Tests never call the live OpenRouter API. They run against `httptest`
+fakes with millisecond timings, because the hook gives the whole test run
+30s.
 
 ## Failure policy is the product
 
