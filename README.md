@@ -110,8 +110,8 @@ The script takes one requirements file with the fields `prompt`,
 `targetQuality`. See `bin/example-requirements.json`. It reads the API key
 from `git config --get openrouter.githubapikey`; set it with
 `git config --local openrouter.githubapikey 'YOUR_KEY'`. History goes to
-`history.json` at the repo root, which is tracked in git so exclusions
-carry across machines.
+`~/.local/state/openrouterclient/history.json`, which is per user and per
+machine and never inside the repo.
 
 It prints the reviewed result as JSON on stdout and logs on stderr. If
 every attempt fails, it prints the failed attempts on stderr and exits 1.
