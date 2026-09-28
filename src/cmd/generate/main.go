@@ -59,10 +59,10 @@ func readRequirements(path string) model.TextGenerationRequirements {
 		fail(fmt.Sprintf("%s: %v", path, err))
 	}
 	return model.TextGenerationRequirements{
-		Prompt:            input.Prompt,
-		ReviewRulesPrompt: input.ReviewRulesPrompt,
-		OutputSchema:      model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
-		TargetQuality:     input.TargetQuality,
+		Prompt:                input.Prompt,
+		OutputSchema:          model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
+		OutputValidationRules: input.OutputValidationRules,
+		TargetQuality:         input.TargetQuality,
 	}
 }
 

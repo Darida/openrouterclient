@@ -11,11 +11,13 @@ type JSONSchema struct {
 
 type TextGenerationRequirements struct {
 	Prompt string
-	// Appended to the library's fixed review instructions. The reviewer judges
-	// content against these rules only.
-	ReviewRulesPrompt string
-	OutputSchema      JSONSchema
-	// The lowest acceptable quality: high, medium, or low. A result rated
-	// below it counts as a failure against its model and gets corrected.
+	// The shape Prompt's output must match. Output that doesn't is a failed
+	// attempt and never reaches validation.
+	OutputSchema JSONSchema
+	// Rules an automatic review checks the output against, appended to the
+	// library's fixed review instructions. Empty skips the review.
+	OutputValidationRules string
+	// The lowest acceptable quality: high, medium, or low. A reviewed result
+	// rated below it counts as a failure against its model and gets corrected.
 	TargetQuality Quality
 }

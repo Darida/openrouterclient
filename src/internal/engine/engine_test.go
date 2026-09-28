@@ -23,13 +23,13 @@ import (
 )
 
 var requirements = model.TextGenerationRequirements{
-	Prompt:            "Name a fruit.",
-	ReviewRulesPrompt: "1. The fruit must be yellow.",
+	Prompt: "Name a fruit.",
 	OutputSchema: model.JSONSchema{
 		Name:   "fruit",
 		Schema: json.RawMessage(`{"type":"object","properties":{"fruit":{"type":"string"}},"required":["fruit"],"additionalProperties":false}`),
 	},
-	TargetQuality: model.QualityHigh,
+	OutputValidationRules: "1. The fruit must be yellow.",
+	TargetQuality:         model.QualityHigh,
 }
 
 // chatRequest is the part of a chat payload the fake server routes on.
@@ -139,7 +139,7 @@ func TestEngineGenerateText_whenReviewHasNoNotes_thenReturnsHighQuality(t *testi
 	got, err := engine.GenerateText(context.Background(), requirements)
 
 	// Assert
-	if err != nil || got.Review.Quality != model.QualityHigh || got.Model != "writer/free" {
+	if err != nil || got.Review == nil || got.Review.Quality != model.QualityHigh || got.Model != "writer/free" {
 		t.Fatalf("got %+v, %v; want high quality from writer/free", got, err)
 	}
 }
@@ -369,5 +369,46 @@ func TestEngineGenerateText_whenRateLimited_thenNeverPollsGenerationLog(t *testi
 	// Assert
 	if fake.logLookups != 0 {
 		t.Fatalf("generation log polled %d times; want 0", fake.logLookups)
+	}
+}
+
+func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) { reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`) },
+		review:   func(int) string { t.Error("review requested"); return `{"notes":[]}` },
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	unreviewed := requirements
+	unreviewed.OutputValidationRules = ""
+
+	// Act
+	got, err := engine.GenerateText(context.Background(), unreviewed)
+
+	// Assert
+	if err != nil || got.Review != nil || fake.reviews != 0 {
+		t.Fatalf("got %+v, %v, %d reviews; want unreviewed content", got, err, fake.reviews)
+	}
+}
+
+func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"vegetable":"carrot"}`)
+		},
+		review: func(int) string { t.Error("review requested"); return `{"notes":[]}` },
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || fake.reviews != 0 {
+		t.Fatalf("err=%v reviews=%d; want AttemptsExhaustedError and no review", err, fake.reviews)
 	}
 }

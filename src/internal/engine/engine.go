@@ -52,6 +52,9 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequirements) (model.GeneratedText, error) {
 	validateRequirements(req)
 	outputValidator := schema.Compile(req.OutputSchema.Name, req.OutputSchema.Schema)
+	if req.OutputValidationRules == "" {
+		return e.generateUnreviewed(ctx, req, outputValidator)
+	}
 	var failures []model.FailedAttempt
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
@@ -71,6 +74,20 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+}
+
+// generateUnreviewed returns the first schema-valid output, recorded unrated.
+func (e *Engine) generateUnreviewed(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator) (model.GeneratedText, error) {
+	e.logger.Info("openrouter: generating without review")
+	gen, failures, ok := e.hedge(ctx, chat.BuildPayload([]chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, e.excludedModels()), outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
+	if err := ctx.Err(); err != nil {
+		return model.GeneratedText{}, err
+	}
+	if !ok {
+		return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+	}
+	e.recordGeneration(gen, "", req.TargetQuality, "no validation rules")
+	return model.GeneratedText{Content: gen.content, Model: gen.model, GenerationID: gen.generationID}, nil
 }
 
 func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
@@ -93,7 +110,7 @@ func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequireme
 // reviewGeneration rates gen against the rules and records it with that
 // rating, or with none if the review had no winner.
 func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, excluded []string, round int) (reviewedRound, []model.FailedAttempt, bool) {
-	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.ReviewRulesPrompt))}
+	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.OutputValidationRules))}
 	rev, failures, ok := e.hedge(ctx, chat.BuildPayload(messages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "")
 	if !ok {
 		e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
@@ -192,8 +209,8 @@ func (e *Engine) excludedModels() []string {
 }
 
 func validateRequirements(req model.TextGenerationRequirements) {
-	if req.Prompt == "" || req.ReviewRulesPrompt == "" || req.OutputSchema.Name == "" || len(req.OutputSchema.Schema) == 0 {
-		panic(fmt.Sprintf("engine: Prompt, ReviewRulesPrompt, OutputSchema.Name, and OutputSchema.Schema are all required: %+v", req))
+	if req.Prompt == "" || req.OutputSchema.Name == "" || len(req.OutputSchema.Schema) == 0 {
+		panic(fmt.Sprintf("engine: Prompt, OutputSchema.Name, and OutputSchema.Schema are all required: %+v", req))
 	}
 	if !quality.IsRating(req.TargetQuality) {
 		panic(fmt.Sprintf("engine: TargetQuality must be high, medium, or low, got %q", req.TargetQuality))
