@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -20,6 +21,37 @@ type Message struct {
 type Response struct {
 	Model   string
 	Content json.RawMessage
+}
+
+// ProviderError is an upstream failure OpenRouter relays as an "error" object,
+// either in a non-200 body or in a 200 body whose headers were already sent.
+type ProviderError struct {
+	Code     int             `json:"code"`
+	Message  string          `json:"message"`
+	Metadata json.RawMessage `json:"metadata"`
+}
+
+// A rate limit is rejected before any generation exists, so the log never
+// has it; the model appears only in the free-text metadata.raw message.
+var rateLimitedModelPattern = regexp.MustCompile(`^(\S+/\S+) is temporarily rate-limited upstream`)
+
+// RateLimitedModel panics unless metadata.raw names the model in the known wording.
+func (p *ProviderError) RateLimitedModel() string {
+	var metadata struct {
+		Raw string `json:"raw"`
+	}
+	if err := json.Unmarshal(p.Metadata, &metadata); err != nil {
+		panic(fmt.Sprintf("chat: rate-limit metadata is not JSON: %v — %s", err, p.Metadata))
+	}
+	match := rateLimitedModelPattern.FindStringSubmatch(metadata.Raw)
+	if match == nil {
+		panic(fmt.Sprintf("chat: rate-limit message names no model in the known wording: %q", metadata.Raw))
+	}
+	return match[1]
+}
+
+func (p *ProviderError) Error() string {
+	return fmt.Sprintf("provider error %d: %s (metadata: %s)", p.Code, p.Message, p.Metadata)
 }
 
 func UserMessage(content string) Message      { return Message{Role: "user", Content: content} }
@@ -40,7 +72,7 @@ func BuildPayload(messages []Message, schema model.JSONSchema, excludedModels []
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},
 		},
-		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds},
+		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false},
 		"reasoning": map[string]any{"exclude": true, "effort": "low"},
 		"plugins":   plugins,
 		"messages":  messages,
@@ -52,12 +84,25 @@ func BuildPayload(messages []Message, schema model.JSONSchema, excludedModels []
 	return body
 }
 
-// ParseResponse panics if a 200 body isn't JSON or names no model, since then
-// nothing can be attributed. A missing or non-JSON message content is the
-// model's fault, so it comes back as an error alongside the known model.
+// ParseErrorBody panics on a non-200 body that isn't an OpenRouter error object.
+func ParseErrorBody(body []byte) *ProviderError {
+	var parsed struct {
+		Error *ProviderError `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Error == nil || parsed.Error.Message == "" {
+		panic(fmt.Sprintf("chat: error response is not an OpenRouter error object — body: %s", body))
+	}
+	return parsed.Error
+}
+
+// ParseResponse returns a *ProviderError for a relayed upstream failure, which
+// names no model. Otherwise it panics if the body isn't JSON or names no model.
+// A missing or non-JSON message content is the model's fault, so it comes back
+// as an error alongside the known model.
 func ParseResponse(body []byte) (Response, error) {
 	var parsed struct {
-		Model   string `json:"model"`
+		Error   *ProviderError `json:"error"`
+		Model   string         `json:"model"`
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
@@ -66,6 +111,9 @@ func ParseResponse(body []byte) (Response, error) {
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		panic(fmt.Sprintf("chat: 200 response body is not JSON: %v — body: %s", err, body))
+	}
+	if parsed.Error != nil {
+		return Response{}, parsed.Error
 	}
 	if parsed.Model == "" {
 		panic(fmt.Sprintf("chat: 200 response has no model — body: %s", body))

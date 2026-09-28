@@ -19,6 +19,9 @@ type Client interface {
 	// Rate records a manual high/medium/low rating of a GenerationID in history;
 	// it errors for any other quality or an unknown or already-rated id.
 	Rate(ctx context.Context, generationID string, quality model.Quality, reason string) error
+	// Close blocks until attempts still settling after GenerateText returned
+	// are recorded in history. Call it once, before the process exits.
+	Close()
 }
 
 // Every field is required. New returns an error if any is unset.

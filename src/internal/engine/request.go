@@ -25,9 +25,32 @@ var retryableStatuses = map[int]bool{
 	http.StatusGatewayTimeout:      true,
 }
 
+// runAttempt resends a request the provider rejected before generating,
+// until something else happens or the attempt's own context ends.
 func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(json.RawMessage) error) (attempt, bool) {
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.settings.ChatURL, bytes.NewReader(payload))
+	for {
+		result, ok, rejected := e.sendOnce(ctx, start, payload, validate)
+		if !rejected {
+			return result, ok
+		}
+		select {
+		case <-ctx.Done():
+			return e.interrupted(ctx, "", start, "provider kept rejecting the request before generating"), false
+		case <-time.After(e.settings.RejectionRetryDelay):
+		}
+	}
+}
+
+// rejected reports a 200 whose body is a provider error other than a rate
+// limit. It arrives within a second, before any generation exists, so no
+// model can be blamed and the log never has it.
+func (e *Engine) sendOnce(ctx context.Context, start time.Time, payload []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
+	// OpenRouter only logs a generation once its connection is gone, so every
+	// path kills the connection before interrupted polls the log.
+	requestCtx, killConnection := context.WithCancel(ctx)
+	defer killConnection()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, e.settings.ChatURL, bytes.NewReader(payload))
 	if err != nil {
 		panic(fmt.Sprintf("engine: build chat request: %v", err))
 	}
@@ -36,39 +59,69 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 
 	resp, err := e.http.Do(req)
 	if err != nil {
-		return e.interrupted(ctx, "", start, err.Error()), false
+		killConnection()
+		return e.interrupted(ctx, "", start, err.Error()), false, false
 	}
-	defer resp.Body.Close()
 	generationID := resp.Header.Get("X-Generation-Id")
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return e.interrupted(ctx, generationID, start, err.Error()), false
+	e.logger.Info("openrouter: response headers", "status", resp.StatusCode, "generationId", generationID, "latency", time.Since(start))
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	killConnection()
+	if readErr != nil {
+		return e.interrupted(ctx, generationID, start, readErr.Error()), false, false
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		providerErr := chat.ParseErrorBody(body)
+		e.logger.Warn("openrouter: non-200 response", "status", resp.StatusCode, "generationId", generationID, "error", providerErr)
 		if !retryableStatuses[resp.StatusCode] {
 			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
 		}
-		return e.interrupted(ctx, generationID, start, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, body)), false
+		return e.providerFailure(ctx, generationID, start, providerErr, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false, false
 	}
 	if generationID == "" {
 		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body: %s", body))
 	}
 
+	return e.classifyOK(ctx, start, generationID, body, validate)
+}
+
+// classifyOK sorts a 200 body into success, invalid output, a rate limit, or
+// a rejection to resend (see sendOnce).
+func (e *Engine) classifyOK(ctx context.Context, start time.Time, generationID string, body []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
 	parsed, err := chat.ParseResponse(body)
+	var providerErr *chat.ProviderError
+	if errors.As(err, &providerErr) {
+		if providerErr.Code == http.StatusTooManyRequests {
+			e.logger.Warn("openrouter: rate limited in 200 response", "generationId", generationID, "error", providerErr)
+			return e.providerFailure(ctx, generationID, start, providerErr, providerErr.Error()), false, false
+		}
+		e.logger.Warn("openrouter: provider rejected before generating; resending", "generationId", generationID, "error", providerErr)
+		return attempt{}, false, true
+	}
 	if err == nil {
 		err = validate(parsed.Content)
 	}
-	result := attempt{model: parsed.Model, generationID: generationID, content: parsed.Content, latency: time.Since(start)}
+	result = attempt{model: parsed.Model, generationID: generationID, content: parsed.Content, latency: time.Since(start)}
 	if err != nil {
 		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, err.Error()
-		return result, false
+		return result, false, false
 	}
 	result.outcome = history.OutcomeSuccess
-	return result, true
+	return result, true, false
 }
 
-// X-Generation-Id arrives with the headers, long before a slow body, so a cut-short request still resolves to a real model.
+// A rate-limited request never ran, so its model comes from the error text
+// instead of the generation log.
+func (e *Engine) providerFailure(ctx context.Context, generationID string, start time.Time, providerErr *chat.ProviderError, reason string) attempt {
+	if providerErr.Code != http.StatusTooManyRequests {
+		return e.interrupted(ctx, generationID, start, reason)
+	}
+	return attempt{model: providerErr.RateLimitedModel(), generationID: generationID, outcome: history.OutcomeFailed, latency: time.Since(start), reason: reason}
+}
+
+// interrupted leaves model empty for recordAttempts to resolve from the
+// generation log, so a slow log never holds up the hedge's next attempt.
 func (e *Engine) interrupted(ctx context.Context, generationID string, start time.Time, reason string) attempt {
 	latency := time.Since(start)
 	outcome := history.OutcomeFailed
@@ -80,9 +133,5 @@ func (e *Engine) interrupted(ctx context.Context, generationID string, start tim
 	case ctx.Err() != nil:
 		return attempt{canceled: true, generationID: generationID, latency: latency, reason: reason}
 	}
-	result := attempt{generationID: generationID, outcome: outcome, latency: latency, reason: reason}
-	if generationID != "" {
-		result.model = e.log.ResolveModel(generationID)
-	}
-	return result
+	return attempt{generationID: generationID, outcome: outcome, latency: latency, reason: reason}
 }

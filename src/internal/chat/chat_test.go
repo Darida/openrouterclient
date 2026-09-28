@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -60,4 +61,71 @@ func TestChatBuildPayload_whenModelsExcluded_thenAutoRouterDeniesThem(t *testing
 	if !strings.Contains(payload, `"allowed_models":["*","!bad/model"]`) {
 		t.Fatalf("payload has no exclusion: %s", payload)
 	}
+}
+
+func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T) {
+	// Arrange
+	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
+
+	// Act
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, nil))
+
+	// Assert
+	if !strings.Contains(payload, `"allow_fallbacks":false`) {
+		t.Fatalf("payload allows fallbacks: %s", payload)
+	}
+}
+
+func TestChatParseResponse_whenBodyCarriesProviderError_thenReturnsProviderError(t *testing.T) {
+	// Arrange
+	body := []byte(`{"id":"gen-1","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
+
+	// Act
+	_, err := ParseResponse(body)
+
+	// Assert
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Code != 503 {
+		t.Fatalf("err = %v; want a 503 ProviderError", err)
+	}
+}
+
+func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"))
+}
+
+func TestProviderErrorRateLimitedModel_whenRawNamesModel_thenReturnsIt(t *testing.T) {
+	// Arrange
+	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`))
+
+	// Act
+	got := providerErr.RateLimitedModel()
+
+	// Assert
+	if got != "qwen/qwen3.8-27b:free" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestProviderErrorRateLimitedModel_whenRawWordingUnknown_thenPanics(t *testing.T) {
+	// Arrange
+	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"Too many requests"}}}`))
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	providerErr.RateLimitedModel()
 }
