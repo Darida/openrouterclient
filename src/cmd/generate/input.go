@@ -14,4 +14,6 @@ type requirementsFile struct {
 	} `json:"outputSchema"`
 	OutputValidationRules string        `json:"outputValidationRules"`
 	TargetQuality         model.Quality `json:"targetQuality"`
+	// Optional; 0 or absent means model.DefaultMaxOutputTokens.
+	MaxOutputTokens int `json:"maxOutputTokens"`
 }

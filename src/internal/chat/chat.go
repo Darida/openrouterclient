@@ -41,9 +41,10 @@ func (p *ProviderError) Error() string {
 func UserMessage(content string) Message      { return Message{Role: "user", Content: content} }
 func AssistantMessage(content string) Message { return Message{Role: "assistant", Content: content} }
 
-func BuildPayload(messages []Message, schema model.JSONSchema, modelID string) []byte {
+func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, maxTokens int) []byte {
 	payload := map[string]any{
-		"model": modelID,
+		"model":      modelID,
+		"max_tokens": maxTokens,
 		"response_format": map[string]any{
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},

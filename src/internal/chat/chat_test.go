@@ -40,7 +40,7 @@ func TestChatBuildPayload_whenBuilt_thenRequestsTheGivenModel(t *testing.T) {
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "liquid/lfm-2.5-2.6b:free"))
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "liquid/lfm-2.5-2.6b:free", 100))
 
 	// Assert
 	if !strings.Contains(payload, `"model":"liquid/lfm-2.5-2.6b:free"`) {
@@ -53,7 +53,7 @@ func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T)
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free"))
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free", 100))
 
 	// Assert
 	if !strings.Contains(payload, `"allow_fallbacks":false`) {
@@ -97,5 +97,18 @@ func TestProviderErrorError_whenMetadataHasRaw_thenUsesItsFirstSentence(t *testi
 	// Assert
 	if got != "provider error 429: qwen/qwen3.8-27b:free is temporarily rate-limited upstream" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestChatBuildPayload_whenBuilt_thenSendsMaxTokens(t *testing.T) {
+	// Arrange
+	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
+
+	// Act
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free", 1234))
+
+	// Assert
+	if !strings.Contains(payload, `"max_tokens":1234`) {
+		t.Fatalf("payload has no max_tokens: %s", payload)
 	}
 }

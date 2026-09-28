@@ -2,6 +2,9 @@ package model
 
 import "encoding/json"
 
+// DefaultMaxOutputTokens applies when MaxOutputTokens is 0.
+const DefaultMaxOutputTokens = 10_000
+
 // JSONSchema is a JSON Schema document plus the name OpenRouter's strict
 // json_schema response_format registers it under.
 type JSONSchema struct {
@@ -22,5 +25,9 @@ type TextGenerationRequirements struct {
 	TargetQuality Quality
 	// Groups requests of one kind in history. When picking models, a past
 	// failure under the same tag counts in full; under another tag, half.
-	Tag string
+	Tag       string
+	ModelTier ModelTier
+	// Sent as the response token limit, and priced as the output when ranking
+	// paid models by cost. 0 means DefaultMaxOutputTokens.
+	MaxOutputTokens int
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Darida/openrouterclient/src/internal/catalog"
 	"github.com/Darida/openrouterclient/src/internal/chat"
+	"github.com/Darida/openrouterclient/src/internal/cost"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/quality"
@@ -79,7 +80,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 // fail, it is recorded as high.
 func (e *Engine) generateUnreviewed(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator) (model.GeneratedText, error) {
 	e.logger.Info("openrouter: generating without review")
-	gen, failures, ok := e.hedge(ctx, []chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, outputValidator.Validate, generatorLabel(req))
+	gen, failures, ok := e.hedge(ctx, req, generatorLabel(req), []chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, outputValidator.Validate)
 	if err := ctx.Err(); err != nil {
 		return model.GeneratedText{}, err
 	}
@@ -98,7 +99,7 @@ func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality,
 // when either the generation or the review had no winner.
 func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
-	gen, failures, ok := e.hedge(ctx, messages, req.OutputSchema, outputValidator.Validate, generatorLabel(req))
+	gen, failures, ok := e.hedge(ctx, req, generatorLabel(req), messages, req.OutputSchema, outputValidator.Validate)
 	if !ok {
 		return reviewedRound{}, failures, false
 	}
@@ -110,7 +111,7 @@ func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequireme
 // rating, or with none if the review had no winner.
 func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.OutputValidationRules))}
-	rev, failures, ok := e.hedge(ctx, messages, review.Schema(), review.Validate, raceLabel{role: history.RoleReviewer, tag: req.Tag})
+	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag}, messages, review.Schema(), review.Validate)
 	if !ok {
 		e.recordGeneration(gen, req, "", "never reviewed")
 		return reviewedRound{}, failures, false
@@ -130,13 +131,14 @@ func (e *Engine) Close() {
 
 // hedge returns as soon as an attempt wins, recording the rest in the
 // background; failures are returned only when nothing won. Each attempt asks
-// a model picked at random from the non-excluded candidates. The generator's
-// winner is left unrecorded, because its quality comes from the review.
-func (e *Engine) hedge(ctx context.Context, messages []chat.Message, schema model.JSONSchema, validate func(json.RawMessage) error, label raceLabel) (attempt, []model.FailedAttempt, bool) {
-	candidates := e.candidateModels(label.tag)
+// a model picked at random from the candidates. The generator's winner is
+// left unrecorded, because its quality comes from the review.
+func (e *Engine) hedge(ctx context.Context, req model.TextGenerationRequirements, label raceLabel, messages []chat.Message, schema model.JSONSchema, validate func(json.RawMessage) error) (attempt, []model.FailedAttempt, bool) {
+	maxTokens := maxOutputTokens(req)
+	candidates := e.candidateModels(req.ModelTier, label.tag, promptTokens(messages, schema), maxTokens)
 	race := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
 		modelID := candidates[rand.IntN(len(candidates))]
-		return e.runAttempt(attemptCtx, modelID, chat.BuildPayload(messages, schema, modelID), validate)
+		return e.runAttempt(attemptCtx, modelID, chat.BuildPayload(messages, schema, modelID, maxTokens), validate)
 	})
 	winner, ok := race.Winner()
 	if !ok {
@@ -196,19 +198,49 @@ func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason strin
 	})
 }
 
-// candidateModels panics when exclusions leave no model to ask.
-func (e *Engine) candidateModels(tag string) []string {
+// candidateModels drops excluded models, then for the paid tier keeps only
+// the cheapest by estimated cost. It panics when nothing is left to ask.
+func (e *Engine) candidateModels(tier model.ModelTier, tag string, promptTokens, maxTokens int) []string {
 	excluded := e.excludedModels(tag)
-	var candidates []string
-	for _, id := range e.catalog.FreeStructuredModels() {
-		if !slices.Contains(excluded, id) {
-			candidates = append(candidates, id)
+	available := e.catalog.Candidates(tier)
+	if len(available) == 0 {
+		panic(fmt.Sprintf("engine: OpenRouter's catalog lists no %s structured-output models", tier))
+	}
+	var models []catalog.Model
+	for _, m := range available {
+		if !slices.Contains(excluded, m.ID) {
+			models = append(models, m)
 		}
 	}
-	if len(candidates) == 0 {
-		panic(fmt.Sprintf("engine: every free structured-output model is excluded: %v", excluded))
+	if len(models) == 0 {
+		panic(fmt.Sprintf("engine: every %s structured-output model is excluded: %v", tier, excluded))
 	}
-	return candidates
+	if tier == model.ModelTierPaid {
+		pool, ceilingUSD := cost.CheapestPool(models, promptTokens, maxTokens)
+		e.logger.Info("openrouter: paid pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
+		models = pool
+	}
+	ids := make([]string, len(models))
+	for i, m := range models {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+// promptTokens counts the schema too, since providers fold it into the prompt.
+func promptTokens(messages []chat.Message, schema model.JSONSchema) int {
+	tokens := cost.EstimateTokens(string(schema.Schema))
+	for _, m := range messages {
+		tokens += cost.EstimateTokens(m.Content)
+	}
+	return tokens
+}
+
+func maxOutputTokens(req model.TextGenerationRequirements) int {
+	if req.MaxOutputTokens == 0 {
+		return model.DefaultMaxOutputTokens
+	}
+	return req.MaxOutputTokens
 }
 
 func (e *Engine) excludedModels(tag string) []string {
@@ -225,6 +257,12 @@ func validateRequirements(req model.TextGenerationRequirements) {
 	}
 	if !quality.IsRating(req.TargetQuality) {
 		panic(fmt.Sprintf("engine: TargetQuality must be high, medium, or low, got %q", req.TargetQuality))
+	}
+	if req.ModelTier != model.ModelTierFree && req.ModelTier != model.ModelTierPaid {
+		panic(fmt.Sprintf("engine: ModelTier must be free or paid, got %q", req.ModelTier))
+	}
+	if req.MaxOutputTokens < 0 {
+		panic(fmt.Sprintf("engine: MaxOutputTokens must not be negative, got %d", req.MaxOutputTokens))
 	}
 }
 
