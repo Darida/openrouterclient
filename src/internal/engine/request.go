@@ -83,6 +83,12 @@ func (e *Engine) sendOnce(ctx context.Context, start time.Time, payload []byte, 
 		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body: %s", body))
 	}
 
+	return e.classifyOK(ctx, start, generationID, body, validate)
+}
+
+// classifyOK sorts a 200 body into success, invalid output, a rate limit, or
+// a rejection to resend (see sendOnce).
+func (e *Engine) classifyOK(ctx context.Context, start time.Time, generationID string, body []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
 	parsed, err := chat.ParseResponse(body)
 	var providerErr *chat.ProviderError
 	if errors.As(err, &providerErr) {
