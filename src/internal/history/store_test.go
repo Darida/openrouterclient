@@ -10,7 +10,7 @@ import (
 )
 
 func generatorFields(generationID string, q, target model.Quality, at time.Time) EntryFields {
-	return EntryFields{Timestamp: at, Model: "m", GenerationID: generationID, Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeSuccess, Quality: q, TargetQuality: target}
+	return EntryFields{Timestamp: at, Model: "m", GenerationID: generationID, Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeSuccess, Quality: q, TargetQuality: target, Tag: "t"}
 }
 
 func TestStoreRecordManual_whenGenerationUnknown_thenErrors(t *testing.T) {
@@ -70,7 +70,7 @@ func TestStoreRecordManual_whenBelowTarget_thenCountsTowardExclusion(t *testing.
 	}
 
 	// Act
-	got := store.Exclusions(now)
+	got := store.Exclusions(now, "t")
 
 	// Assert
 	if len(got.Excluded) != 1 || got.Excluded[0] != "m" {

@@ -35,10 +35,11 @@ func (s *Store) Append(entry Entry) {
 	})
 }
 
-func (s *Store) Exclusions(now time.Time) Exclusions {
+// Exclusions weighs each failure by whether it was recorded under tag.
+func (s *Store) Exclusions(now time.Time, tag string) Exclusions {
 	var entries []Entry
 	s.withLock(func() { entries = s.load() })
-	return computeExclusions(entries, now)
+	return computeExclusions(entries, now, tag)
 }
 
 // RecordManual returns an error for caller mistakes: an invalid quality, an
@@ -79,6 +80,7 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 			Quality:       q,
 			TargetQuality: rated.TargetQuality,
 			Reason:        reason,
+			Tag:           rated.Tag,
 		})
 		s.save(append(entries, entry))
 	})

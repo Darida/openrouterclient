@@ -20,4 +20,7 @@ type TextGenerationRequirements struct {
 	// The lowest acceptable quality: high, medium, or low. A reviewed result
 	// rated below it counts as a failure against its model and gets corrected.
 	TargetQuality Quality
+	// Groups requests of one kind in history. When picking models, a past
+	// failure under the same tag counts in full; under another tag, half.
+	Tag string
 }

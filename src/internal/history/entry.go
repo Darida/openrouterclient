@@ -48,6 +48,8 @@ type EntryFields struct {
 	TargetQuality  model.Quality `json:"targetQuality,omitempty"`
 	LatencySeconds float64       `json:"latencySeconds"`
 	Reason         string        `json:"reason,omitempty"`
+	// The request's Tag; a manual rating inherits the rated generation's.
+	Tag string `json:"tag"`
 }
 
 // Entry is a validated history record. Its zero value is never valid.
