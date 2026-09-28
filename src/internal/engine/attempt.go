@@ -34,6 +34,6 @@ func (r reviewedRound) generatedText() model.GeneratedText {
 		Content:      r.gen.content,
 		Model:        r.gen.model,
 		GenerationID: r.gen.generationID,
-		Review:       model.Review{Verdict: r.verdict, Quality: r.quality, Model: r.rev.model, GenerationID: r.rev.generationID},
+		Review:       &model.Review{Verdict: r.verdict, Quality: r.quality, Model: r.rev.model, GenerationID: r.rev.generationID},
 	}
 }

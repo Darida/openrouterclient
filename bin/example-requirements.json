@@ -1,17 +1,24 @@
 {
   "prompt": "Suggest a name for a small bakery that specializes in sourdough bread.",
-  "reviewRulesPrompt": "1. The name must be at most three words.\n2. The name must not contain the word \"bakery\".\n3. The tagline must mention sourdough.",
   "outputSchema": {
     "name": "bakery_name",
     "schema": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "tagline": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        }
       },
-      "required": ["name", "tagline"],
+      "required": [
+        "name",
+        "tagline"
+      ],
       "additionalProperties": false
     }
   },
+  "outputValidationRules": "1. The name must be at most three words.\n2. The name must not contain the word \"bakery\".\n3. The tagline must mention sourdough.",
   "targetQuality": "high"
 }

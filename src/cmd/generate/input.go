@@ -7,11 +7,11 @@ import (
 )
 
 type requirementsFile struct {
-	Prompt            string `json:"prompt"`
-	ReviewRulesPrompt string `json:"reviewRulesPrompt"`
-	OutputSchema      struct {
+	Prompt       string `json:"prompt"`
+	OutputSchema struct {
 		Name   string          `json:"name"`
 		Schema json.RawMessage `json:"schema"`
 	} `json:"outputSchema"`
-	TargetQuality model.Quality `json:"targetQuality"`
+	OutputValidationRules string        `json:"outputValidationRules"`
+	TargetQuality         model.Quality `json:"targetQuality"`
 }

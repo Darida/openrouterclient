@@ -11,9 +11,12 @@ Each call goes through these steps:
    unreliable are excluded.
 2. **Review.** A follow-up request continues the same conversation. It
    sends the generated answer back, followed by a fixed review
-   instruction plus the caller's `ReviewRulesPrompt`. The reply must match
+   instruction plus the caller's `OutputValidationRules`. The reply must match
    the fixed `ReviewVerdict` schema, which is a list of notes. The number
-   of notes sets the generation's `Quality`.
+   of notes sets the generation's `Quality`. With empty
+   `OutputValidationRules`, review and correction are skipped and the first
+   schema-valid output is returned unrated. Output that fails the schema
+   is a failed attempt and never reaches review.
 3. **Correct.** If that quality is below `TargetQuality`, a correction
    request sends the original prompt, the previous reply, and the review
    notes, and asks the model to address the notes. The correction is then
@@ -44,7 +47,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/` is the command-line program behind `bin/generate`.
+- `src/cmd/generate/` is the command-line program behind `bin/generate.sh`.
 
 ## Behavior
 
@@ -99,11 +102,11 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate bin/example-requirements.json
+bin/generate.sh bin/example-requirements.json
 ```
 
 The script takes one requirements file with the fields `prompt`,
-`reviewRulesPrompt`, `outputSchema` (`name` and `schema`), and
+`outputSchema` (`name` and `schema`), `outputValidationRules`, and
 `targetQuality`. See `bin/example-requirements.json`. It reads the API key
 from `git config --get openrouter.githubapikey`; set it with
 `git config --local openrouter.githubapikey 'YOUR_KEY'`. History goes to

@@ -7,7 +7,7 @@ type ReviewVerdict struct {
 }
 
 type ReviewNote struct {
-	// The rule violated, quoted or named as it appears in ReviewRulesPrompt.
+	// The rule violated, quoted or named as it appears in OutputValidationRules.
 	Rule string `json:"rule"`
 	// An actionable description of the violation.
 	Text string `json:"text"`
