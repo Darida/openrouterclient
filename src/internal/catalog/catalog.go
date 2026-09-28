@@ -7,9 +7,12 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Darida/openrouterclient/src/model"
 )
 
 const (
@@ -27,21 +30,22 @@ type Catalog struct {
 	models    []entry
 }
 
-// FreeStructuredModels lists the free models that can answer with a strict
-// json_schema response format, which every request here uses.
-func (c *Catalog) FreeStructuredModels() []string {
+// Candidates lists the models of tier that can answer with a strict
+// json_schema response format, which every request here uses. It panics on a
+// candidate whose price isn't a non-negative number.
+func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if time.Since(c.fetchedAt) >= cacheTTL {
 		c.refresh()
 	}
-	var ids []string
+	var candidates []Model
 	for _, m := range c.models {
-		if strings.HasSuffix(m.ID, ":free") && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
-			ids = append(ids, m.ID)
+		if inTier(m.ID, tier) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
+			candidates = append(candidates, Model{ID: m.ID, PromptUSDPerToken: price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: price(m.ID, "completion", m.Pricing.Completion)})
 		}
 	}
-	return ids
+	return candidates
 }
 
 func (c *Catalog) refresh() {
@@ -79,4 +83,25 @@ func (c *Catalog) fetch() []entry {
 		}
 	}
 	return parsed.Data
+}
+
+// OpenRouter's own "openrouter/…" entries are routers, not models, and list
+// placeholder prices such as -1.
+func inTier(id string, tier model.ModelTier) bool {
+	free := strings.HasSuffix(id, ":free")
+	switch tier {
+	case model.ModelTierFree:
+		return free
+	case model.ModelTierPaid:
+		return !free && !strings.HasPrefix(id, "openrouter/")
+	}
+	panic(fmt.Sprintf("catalog: unknown model tier %q", tier))
+}
+
+func price(id, kind, raw string) float64 {
+	usd, err := strconv.ParseFloat(raw, 64)
+	if err != nil || usd < 0 {
+		panic(fmt.Sprintf("catalog: model %q has an invalid %s price %q", id, kind, raw))
+	}
+	return usd
 }

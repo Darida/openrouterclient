@@ -16,6 +16,7 @@ func main() {
 	inputPath := flag.String("input", "", "requirements JSON file (required)")
 	historyPath := flag.String("history", "", "history JSON file (required)")
 	tag := flag.String("tag", "", "history tag for this request (required)")
+	paid := flag.Bool("paid", false, "use the cheapest paid models instead of free ones")
 	flag.Parse()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if *inputPath == "" || *historyPath == "" || *tag == "" || apiKey == "" {
@@ -31,7 +32,7 @@ func main() {
 		fail(err.Error())
 	}
 
-	result, err := client.GenerateText(context.Background(), readRequirements(*inputPath, *tag))
+	result, err := client.GenerateText(context.Background(), readRequirements(*inputPath, *tag, tierFor(*paid)))
 	if err == nil {
 		printJSON(os.Stdout, result)
 	}
@@ -42,7 +43,7 @@ func main() {
 	}
 }
 
-func readRequirements(path, tag string) model.TextGenerationRequirements {
+func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerationRequirements {
 	file, err := os.Open(path)
 	if err != nil {
 		fail(err.Error())
@@ -60,7 +61,16 @@ func readRequirements(path, tag string) model.TextGenerationRequirements {
 		OutputValidationRules: input.OutputValidationRules,
 		TargetQuality:         input.TargetQuality,
 		Tag:                   tag,
+		ModelTier:             tier,
+		MaxOutputTokens:       input.MaxOutputTokens,
 	}
+}
+
+func tierFor(paid bool) model.ModelTier {
+	if paid {
+		return model.ModelTierPaid
+	}
+	return model.ModelTierFree
 }
 
 func printJSON(file *os.File, value any) {

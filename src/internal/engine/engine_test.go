@@ -30,6 +30,7 @@ var requirements = model.TextGenerationRequirements{
 	OutputValidationRules: "1. The fruit must be yellow.",
 	TargetQuality:         model.QualityHigh,
 	Tag:                   "fruit-test",
+	ModelTier:             model.ModelTierFree,
 }
 
 // The fake catalog's only candidate, so every attempt picks it.
@@ -37,6 +38,7 @@ const pickedModel = "slow/model:free"
 
 // chatRequest is the part of a chat payload the fake server routes on.
 type chatRequest struct {
+	Model          string `json:"model"`
 	ResponseFormat struct {
 		JSONSchema struct {
 			Name string `json:"name"`
@@ -79,7 +81,11 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		f.generate(w, r, n)
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data":[{"id":"slow/model:free","canonical_slug":"slow/model-20260101","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]}}]}`)
+		fmt.Fprint(w, `{"data":[
+			{"id":"slow/model:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
+			{"id":"cheap/model","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}},
+			{"id":"pricey/model","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"}}
+		]}`)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -415,4 +421,24 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 		}
 	}
 	t.Fatalf("history %+v has no high entry for gen-1", entries)
+}
+
+func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) { reply(w, "gen-1", "cheap/model", `{"fruit":"banana"}`) },
+		review:   noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := requirements
+	paid.ModelTier = model.ModelTierPaid
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), paid)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "cheap/model" {
+		t.Fatalf("err=%v generations=%+v; want one request to cheap/model", err, fake.generations)
+	}
 }

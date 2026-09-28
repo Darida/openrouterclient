@@ -6,12 +6,15 @@ import (
 	"slices"
 	"sync/atomic"
 	"testing"
+
+	"github.com/Darida/openrouterclient/src/model"
 )
 
 const catalogBody = `{"data":[
-  {"id":"liquid/lfm-2.5-2.6b:free","canonical_slug":"liquid/lfm-2.5-2.6b-20260811","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]}},
-  {"id":"liquid/lfm-2.5-2.6b","canonical_slug":"liquid/lfm-2.5-2.6b-20260811","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]}},
-  {"id":"nvidia/nemotron-3.5-lightning:free","canonical_slug":"nvidia/nemotron-3.5-lightning-20260807","supported_parameters":["tools"],"architecture":{"output_modalities":["text"]}}
+  {"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
+  {"id":"liquid/lfm-2.5-2.6b","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"}},
+  {"id":"openrouter/auto","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-1","completion":"-1"}},
+  {"id":"nvidia/nemotron-3.5-lightning:free","supported_parameters":["tools"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
 ]}`
 
 func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
@@ -24,12 +27,20 @@ func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
 	return &Catalog{URL: server.URL, HTTP: server.Client()}, &fetches
 }
 
-func TestCatalogFreeStructuredModels_whenListed_thenOnlyFreeWithStructuredOutputs(t *testing.T) {
+func candidateIDs(models []Model) []string {
+	ids := make([]string, len(models))
+	for i, m := range models {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+func TestCatalogCandidates_whenFreeTier_thenOnlyFreeWithStructuredOutputs(t *testing.T) {
 	// Arrange
 	c, _ := newCatalog(t)
 
 	// Act
-	got := c.FreeStructuredModels()
+	got := candidateIDs(c.Candidates(model.ModelTierFree))
 
 	// Assert
 	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b:free"}) {
@@ -37,13 +48,26 @@ func TestCatalogFreeStructuredModels_whenListed_thenOnlyFreeWithStructuredOutput
 	}
 }
 
+func TestCatalogCandidates_whenPaidTier_thenSkipsFreeAndRouters(t *testing.T) {
+	// Arrange
+	c, _ := newCatalog(t)
+
+	// Act
+	got := candidateIDs(c.Candidates(model.ModelTierPaid))
+
+	// Assert
+	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestCatalogFreeStructuredModels_whenCalledTwiceWithinTTL_thenFetchesOnce(t *testing.T) {
 	// Arrange
 	c, fetches := newCatalog(t)
-	c.FreeStructuredModels()
+	c.Candidates(model.ModelTierFree)
 
 	// Act
-	c.FreeStructuredModels()
+	c.Candidates(model.ModelTierFree)
 
 	// Assert
 	if fetches.Load() != 1 {

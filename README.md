@@ -6,11 +6,15 @@ back JSON that matches a schema you supply. It is ported from
 
 Each call goes through these steps:
 
-1. **Generate.** Each attempt picks a model at random from the free models
-   that support structured output, minus those the local history marks as
-   unreliable, and sends the prompt to it with a strict `json_schema`
-   response format. The model list comes from OpenRouter's catalog, cached
-   in memory for an hour.
+1. **Generate.** Each attempt picks a model at random from the models of
+   the request's `ModelTier` that support structured output, minus those
+   the local history marks as unreliable, and sends the prompt to it with a
+   strict `json_schema` response format and `MaxOutputTokens` (default
+   10,000) as `max_tokens`. For the paid tier, candidates are first
+   narrowed to the cheapest: each is priced as prompt chars ÷ 4 × prompt
+   price plus `MaxOutputTokens` × completion price, and only those at most
+   10% above the 30th-percentile estimate remain. The model list comes from
+   OpenRouter's catalog, cached in memory for an hour.
 2. **Review.** A follow-up request continues the same conversation. It
    sends the generated answer back, followed by a fixed review
    instruction plus the caller's `OutputValidationRules`. The reply must match
@@ -42,6 +46,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `chat`: builds the wire payload and parses responses.
   - `hedge`: runs staggered parallel attempts.
   - `catalog`: caches OpenRouter's model list and names the candidates.
+  - `cost`: estimates a request's cost per model and keeps the cheapest.
   - `history`: stores outcomes and computes exclusions.
   - `review`: holds the fixed review prompt and schema.
   - `quality`: ranks qualities and derives one from a review's note count.
@@ -91,12 +96,13 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.json
+bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requirements.json
 ```
 
 The script takes one requirements file with the fields `prompt`,
-`outputSchema` (`name` and `schema`), `outputValidationRules`, and
-`targetQuality`. See `bin/example-requirements.json`. The OpenRouter API
+`outputSchema` (`name` and `schema`), `outputValidationRules`,
+`targetQuality`, and optionally `maxOutputTokens`. `--paid` switches from
+free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
 `--tag=...`. History goes to
 `~/.local/state/openrouterclient/history.json`, which is per user and per
