@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+# Base hook, shared across projects - maintained in ai-cli-config.
+# Add project-specific pre-push steps below this line.
+"/home/daridagm/ai-cli-config/human_tools/../git/hooks/pre-push" "$@"
