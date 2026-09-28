@@ -30,6 +30,7 @@ var requirements = model.TextGenerationRequirements{
 	},
 	OutputValidationRules: "1. The fruit must be yellow.",
 	TargetQuality:         model.QualityHigh,
+	Tag:                   "fruit-test",
 }
 
 // chatRequest is the part of a chat payload the fake server routes on.

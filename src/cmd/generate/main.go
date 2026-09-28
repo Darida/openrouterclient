@@ -16,10 +16,11 @@ import (
 func main() {
 	inputPath := flag.String("input", "", "requirements JSON file (required)")
 	historyPath := flag.String("history", "", "history JSON file (required)")
+	tag := flag.String("tag", "", "history tag for this request (required)")
 	flag.Parse()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if *inputPath == "" || *historyPath == "" || apiKey == "" {
-		fail("--input, --history, and OPENROUTER_API_KEY are all required")
+	if *inputPath == "" || *historyPath == "" || *tag == "" || apiKey == "" {
+		fail("--input, --history, --tag, and OPENROUTER_API_KEY are all required")
 	}
 
 	client, err := api.New(api.Config{
@@ -31,7 +32,7 @@ func main() {
 		fail(err.Error())
 	}
 
-	result, err := client.GenerateText(context.Background(), readRequirements(*inputPath))
+	result, err := client.GenerateText(context.Background(), readRequirements(*inputPath, *tag))
 	var exhausted *model.AttemptsExhaustedError
 	if errors.As(err, &exhausted) {
 		printJSON(os.Stderr, exhausted)
@@ -46,7 +47,7 @@ func main() {
 	}
 }
 
-func readRequirements(path string) model.TextGenerationRequirements {
+func readRequirements(path, tag string) model.TextGenerationRequirements {
 	file, err := os.Open(path)
 	if err != nil {
 		fail(err.Error())
@@ -63,6 +64,7 @@ func readRequirements(path string) model.TextGenerationRequirements {
 		OutputSchema:          model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
 		OutputValidationRules: input.OutputValidationRules,
 		TargetQuality:         input.TargetQuality,
+		Tag:                   tag,
 	}
 }
 

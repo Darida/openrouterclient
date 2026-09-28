@@ -22,6 +22,14 @@ type attempt struct {
 	reason   string
 }
 
+// raceLabel is what every history entry from one race shares.
+type raceLabel struct {
+	role history.Role
+	// Empty for the reviewer, whose output has no target.
+	target model.Quality
+	tag    string
+}
+
 // reviewedRound is one generation plus the automatic review that rated it.
 type reviewedRound struct {
 	gen, rev attempt

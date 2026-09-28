@@ -18,8 +18,8 @@ func validate(f EntryFields) error {
 	if err := validateSource(f); err != nil {
 		return fmt.Errorf("invalid entry %+v: %w", f, err)
 	}
-	if f.Timestamp.IsZero() || f.Model == "" || f.GenerationID == "" {
-		return fmt.Errorf("invalid entry %+v: timestamp, model, and generationId are required", f)
+	if f.Timestamp.IsZero() || f.Model == "" || f.GenerationID == "" || f.Tag == "" {
+		return fmt.Errorf("invalid entry %+v: timestamp, model, generationId, and tag are required", f)
 	}
 	return nil
 }

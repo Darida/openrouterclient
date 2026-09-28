@@ -95,8 +95,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   reviewer's model. Output that doesn't match the schema, whether from the
   generator or the reviewer, is rated `unusable`.
 - **Exclusion.** A result counts as a failure if its quality is below the
-  target of the request that produced it, or if it took 60s or longer. A
-  model is excluded once its failures exceed any of these limits: more
+  target of the request that produced it, or if it took 60s or longer.
+  Every entry carries its request's `Tag`; for a new request, a failure
+  under the same tag counts 1 and one under another tag counts 0.5. A
+  model is excluded once its weighted failures exceed any of these limits: more
   than 3 today (UTC), more than 6 in the last 7 days, more than 12 in the
   last 30 days, or more than 24 in total. Excluded models are never
   picked; if every candidate is excluded, the call panics.
@@ -104,13 +106,14 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate.sh --key=YOUR_OPENROUTER_KEY bin/example-requirements.json
+bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.json
 ```
 
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`, and
 `targetQuality`. See `bin/example-requirements.json`. The OpenRouter API
-key is required as `--key=...`. History goes to
+key is required as `--key=...`, and the request's history tag as
+`--tag=...`. History goes to
 `~/.local/state/openrouterclient/history.json`, which is per user and per
 machine and never inside the repo.
 
@@ -146,6 +149,7 @@ This library never falls back and never swallows a failure.
 `Config.HistoryPath` points to a JSON array with one object per generation
 outcome. Each object holds the timestamp, model, generation id, whether
 the rating was automatic or manual, the quality, the request's target
-quality, latency, and a reason for failures and manual ratings. Writes are serialized within the
-process and protected with a file lock across processes. The caller owns
+quality and tag, latency, and a reason for failures and manual ratings.
+Writes are serialized within the process and protected with a file lock
+across processes. A file with entries that lack a tag panics on load. The caller owns
 where this file lives and whether it is committed.
