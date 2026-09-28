@@ -15,6 +15,8 @@ type Settings struct {
 	GenerationLog    generationlog.Timing
 	// Generation rounds per call, counting the first; each later one is a correction.
 	MaxRounds int
+	// Pause before resending a request the provider rejected before generating.
+	RejectionRetryDelay time.Duration
 }
 
 var Production = Settings{
@@ -32,5 +34,6 @@ var Production = Settings{
 		Window:       3 * time.Minute,
 		PollInterval: 5 * time.Second,
 	},
-	MaxRounds: 3,
+	MaxRounds:           3,
+	RejectionRetryDelay: time.Second,
 }

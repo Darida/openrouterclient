@@ -93,7 +93,8 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		CatalogURL:       server.URL + "/models",
 		Hedge:            hedge.Timing{MaxAttempts: 2, Stagger: 5 * time.Second, AbortGrace: 50 * time.Millisecond, AttemptTimeout: 200 * time.Millisecond},
 		GenerationLog:    generationlog.Timing{Window: 500 * time.Millisecond, PollInterval: 10 * time.Millisecond},
-		MaxRounds:        3,
+		MaxRounds:           3,
+		RejectionRetryDelay: 10 * time.Millisecond,
 	}
 	return server, settings
 }
@@ -276,19 +277,34 @@ func TestEngineRate_whenGenerationReturned_thenRecordsManualRating(t *testing.T)
 	}
 }
 
-func TestEngineGenerateText_whenProviderErrorIn200Body_thenRecordsFailureAgainstLogModel(t *testing.T) {
-	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			if n == 1 {
-				w.Header().Set("X-Generation-Id", "gen-overloaded")
-				fmt.Fprint(w, `{"id":"gen-overloaded","error":{"message":"Upstream error: overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
-				return
-			}
-			reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
-		},
-		review: noNotes,
+func overloadedFirst(w http.ResponseWriter, r *http.Request, n int) {
+	if n == 1 {
+		w.Header().Set("X-Generation-Id", "gen-overloaded")
+		fmt.Fprint(w, `{"id":"gen-overloaded","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
+		return
 	}
+	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
+}
+
+func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResendsAndWins(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: overloadedFirst, review: noNotes}
+	_, settings := fake.serve(t)
+	settings.Hedge.MaxAttempts = 1
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	got, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	if err != nil || got.GenerationID != "gen-2" {
+		t.Fatalf("got %+v, %v; want the single attempt to resend and return gen-2", got, err)
+	}
+}
+
+func TestEngineGenerateText_whenProviderRejectsIn200Body_thenRecordsNothingForIt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: overloadedFirst, review: noNotes}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
 	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
@@ -301,11 +317,10 @@ func TestEngineGenerateText_whenProviderErrorIn200Body_thenRecordsFailureAgainst
 
 	// Assert
 	for _, e := range entries {
-		if f := e.Fields(); f.GenerationID == "gen-overloaded" && f.Model == "slow/model:free" && f.Outcome == history.OutcomeFailed {
-			return
+		if e.Fields().GenerationID == "gen-overloaded" {
+			t.Fatalf("history %+v records the rejected request", entries)
 		}
 	}
-	t.Fatalf("history %+v has no failed entry for gen-overloaded against slow/model:free", entries)
 }
 
 func rateLimitedFirst(w http.ResponseWriter, r *http.Request, n int) {

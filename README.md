@@ -70,8 +70,12 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   catalog.
 - **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
   a request, so an upstream failure can arrive as an `error` object inside
-  a 200 body as well as with a transient non-200 status. Both count as a
-  failure of the model the log names. A rate limit (error code 429) is
+  a 200 body as well as with a transient non-200 status. A 200 whose body
+  is a provider error other than a rate limit arrives within a second,
+  before any generation exists, so the same attempt resends it after a 1s
+  pause. That doesn't use up an attempt or count against any model; the
+  attempt's own timeout still bounds it. A non-200 provider error counts as
+  a failure of the model the log names. A rate limit (error code 429) is
   rejected before any generation exists, so the log never has it. Its
   model is parsed from the error's `metadata.raw` message instead, and an
   unrecognized message panics. Requests go out with provider
