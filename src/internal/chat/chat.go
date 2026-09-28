@@ -40,7 +40,7 @@ func BuildPayload(messages []Message, schema model.JSONSchema, excludedModels []
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},
 		},
-		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds},
+		"provider":  map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false},
 		"reasoning": map[string]any{"exclude": true, "effort": "low"},
 		"plugins":   plugins,
 		"messages":  messages,

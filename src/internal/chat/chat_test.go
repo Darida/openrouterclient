@@ -61,3 +61,16 @@ func TestChatBuildPayload_whenModelsExcluded_thenAutoRouterDeniesThem(t *testing
 		t.Fatalf("payload has no exclusion: %s", payload)
 	}
 }
+
+func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T) {
+	// Arrange
+	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
+
+	// Act
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, nil))
+
+	// Assert
+	if !strings.Contains(payload, `"allow_fallbacks":false`) {
+		t.Fatalf("payload allows fallbacks: %s", payload)
+	}
+}
