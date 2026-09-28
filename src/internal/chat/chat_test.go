@@ -86,3 +86,16 @@ func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
 	// Act
 	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"))
 }
+
+func TestProviderErrorError_whenMetadataHasRaw_thenUsesItsFirstSentence(t *testing.T) {
+	// Arrange
+	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`))
+
+	// Act
+	got := providerErr.Error()
+
+	// Assert
+	if got != "provider error 429: qwen/qwen3.8-27b:free is temporarily rate-limited upstream" {
+		t.Fatalf("got %q", got)
+	}
+}

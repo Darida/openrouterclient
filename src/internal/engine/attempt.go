@@ -20,6 +20,8 @@ type attempt struct {
 	content  json.RawMessage
 	latency  time.Duration
 	reason   string
+	// Provider rejections resent within this attempt before it settled.
+	resends int
 }
 
 // raceLabel is what every history entry from one race shares.

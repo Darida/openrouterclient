@@ -29,14 +29,17 @@ var retryableStatuses = map[int]bool{
 // until something else happens or the attempt's own context ends.
 func (e *Engine) runAttempt(ctx context.Context, modelID string, payload []byte, validate func(json.RawMessage) error) (attempt, bool) {
 	start := time.Now()
-	for {
+	for resends := 0; ; resends++ {
 		result, ok, rejected := e.sendOnce(ctx, modelID, start, payload, validate)
+		result.resends = resends
 		if !rejected {
 			return result, ok
 		}
 		select {
 		case <-ctx.Done():
-			return e.failed(ctx, modelID, "", start, "provider kept rejecting the request before generating"), false
+			result = e.failed(ctx, modelID, "", start, "provider kept rejecting the request before generating")
+			result.resends = resends + 1
+			return result, false
 		case <-time.After(e.settings.RejectionRetryDelay):
 		}
 	}
@@ -59,7 +62,6 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 	}
 	defer resp.Body.Close()
 	generationID := resp.Header.Get("X-Generation-Id")
-	e.logger.Info("openrouter: response headers", "status", resp.StatusCode, "model", modelID, "generationId", generationID, "latency", time.Since(start))
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return e.failed(ctx, modelID, generationID, start, err.Error()), false, false
@@ -67,7 +69,6 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 
 	if resp.StatusCode != http.StatusOK {
 		providerErr := chat.ParseErrorBody(body)
-		e.logger.Warn("openrouter: non-200 response", "status", resp.StatusCode, "model", modelID, "generationId", generationID, "error", providerErr)
 		if !retryableStatuses[resp.StatusCode] {
 			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
 		}
@@ -87,10 +88,8 @@ func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time
 	var providerErr *chat.ProviderError
 	if errors.As(err, &providerErr) {
 		if providerErr.Code == http.StatusTooManyRequests {
-			e.logger.Warn("openrouter: rate limited in 200 response", "model", modelID, "generationId", generationID, "error", providerErr)
 			return e.failed(ctx, modelID, generationID, start, providerErr.Error()), false, false
 		}
-		e.logger.Warn("openrouter: provider rejected before generating; resending", "model", modelID, "generationId", generationID, "error", providerErr)
 		return attempt{}, false, true
 	}
 	if err == nil {

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -33,10 +32,6 @@ func main() {
 	}
 
 	result, err := client.GenerateText(context.Background(), readRequirements(*inputPath, *tag))
-	var exhausted *model.AttemptsExhaustedError
-	if errors.As(err, &exhausted) {
-		printJSON(os.Stderr, exhausted)
-	}
 	if err == nil {
 		printJSON(os.Stdout, result)
 	}

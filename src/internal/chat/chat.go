@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -23,8 +24,18 @@ type ProviderError struct {
 	Metadata json.RawMessage `json:"metadata"`
 }
 
+// Error keeps one line: the upstream's own first sentence when it sends one
+// (metadata.raw), since OpenRouter's message is often a generic wrapper.
 func (p *ProviderError) Error() string {
-	return fmt.Sprintf("provider error %d: %s (metadata: %s)", p.Code, p.Message, p.Metadata)
+	var metadata struct {
+		Raw string `json:"raw"`
+	}
+	json.Unmarshal(p.Metadata, &metadata)
+	detail := p.Message
+	if metadata.Raw != "" {
+		detail, _, _ = strings.Cut(metadata.Raw, ". ")
+	}
+	return fmt.Sprintf("provider error %d: %s", p.Code, detail)
 }
 
 func UserMessage(content string) Message      { return Message{Role: "user", Content: content} }
