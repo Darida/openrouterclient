@@ -17,7 +17,7 @@ Each call goes through these steps:
    the fixed `ReviewVerdict` schema, which is a list of notes. The number
    of notes sets the generation's `Quality`. With empty
    `OutputValidationRules`, review and correction are skipped and the first
-   schema-valid output is returned unrated. Output that fails the schema
+   schema-valid output is returned, recorded in history as high. Output that fails the schema
    is a failed attempt and never reaches review.
 3. **Correct.** If that quality is below `TargetQuality`, a correction
    request sends the original prompt, the previous reply, and the review

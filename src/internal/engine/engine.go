@@ -78,7 +78,8 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
 }
 
-// generateUnreviewed returns the first schema-valid output, recorded unrated.
+// generateUnreviewed returns the first schema-valid output. With no rules to
+// fail, it is recorded as high.
 func (e *Engine) generateUnreviewed(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator) (model.GeneratedText, error) {
 	e.logger.Info("openrouter: generating without review")
 	gen, failures, ok := e.hedge(ctx, []chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, outputValidator.Validate, generatorLabel(req))
@@ -88,7 +89,7 @@ func (e *Engine) generateUnreviewed(ctx context.Context, req model.TextGeneratio
 	if !ok {
 		return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
 	}
-	e.recordGeneration(gen, req, "", "no validation rules")
+	e.recordGeneration(gen, req, model.QualityHigh, "no validation rules; assumed high")
 	return model.GeneratedText{Content: gen.content, Model: gen.model, GenerationID: gen.generationID}, nil
 }
 
