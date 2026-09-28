@@ -207,7 +207,7 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsModelFromGenerationLo
 
 	// Assert
 	for _, e := range entries {
-		if e.GenerationID == "gen-slow" && e.Model == "slow/free" && e.Outcome == history.OutcomeTimeout {
+		if f := e.Fields(); f.GenerationID == "gen-slow" && f.Model == "slow/free" && f.Outcome == history.OutcomeTimeout {
 			return
 		}
 	}
@@ -237,7 +237,7 @@ func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t 
 
 	// Assert
 	for _, e := range entries {
-		if e.GenerationID == "gen-bad" && e.Outcome == history.OutcomeInvalidOutput && e.Quality == model.QualityUnusable {
+		if f := e.Fields(); f.GenerationID == "gen-bad" && f.Outcome == history.OutcomeInvalidOutput && f.Quality == model.QualityUnusable {
 			return
 		}
 	}

@@ -143,7 +143,7 @@ func (e *Engine) recordGeneration(gen attempt, rated, target model.Quality, reas
 }
 
 func (e *Engine) entry(a attempt, role history.Role, q, target model.Quality, reason string) history.Entry {
-	return history.Entry{
+	return history.NewEntry(history.EntryFields{
 		Timestamp:      time.Now().UTC(),
 		Model:          a.model,
 		GenerationID:   a.generationID,
@@ -154,7 +154,7 @@ func (e *Engine) entry(a attempt, role history.Role, q, target model.Quality, re
 		TargetQuality:  target,
 		LatencySeconds: a.latency.Seconds(),
 		Reason:         reason,
-	}
+	})
 }
 
 func (e *Engine) excludedModels() []string {

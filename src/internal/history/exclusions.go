@@ -30,21 +30,22 @@ func computeExclusions(entries []Entry, now time.Time) Exclusions {
 
 	counts := map[string]*failureCounts{}
 	for _, e := range entries {
-		if !countsAsFailure(e) {
+		f := e.Fields()
+		if !countsAsFailure(f) {
 			continue
 		}
-		c, ok := counts[e.Model]
+		c, ok := counts[f.Model]
 		if !ok {
 			c = &failureCounts{}
-			counts[e.Model] = c
+			counts[f.Model] = c
 		}
-		if !e.Timestamp.Before(todayStart) {
+		if !f.Timestamp.Before(todayStart) {
 			c.today++
 		}
-		if !e.Timestamp.Before(weekStart) {
+		if !f.Timestamp.Before(weekStart) {
 			c.week++
 		}
-		if !e.Timestamp.Before(monthStart) {
+		if !f.Timestamp.Before(monthStart) {
 			c.month++
 		}
 		c.lifetime++
@@ -68,9 +69,9 @@ func computeExclusions(entries []Entry, now time.Time) Exclusions {
 	return result
 }
 
-func countsAsFailure(e Entry) bool {
-	if e.Outcome != OutcomeSuccess || e.LatencySeconds >= slowLatencySeconds {
+func countsAsFailure(f EntryFields) bool {
+	if f.Outcome != OutcomeSuccess || f.LatencySeconds >= slowLatencySeconds {
 		return true
 	}
-	return e.Quality != "" && e.TargetQuality != "" && quality.Below(e.Quality, e.TargetQuality)
+	return f.Quality != "" && f.TargetQuality != "" && quality.Below(f.Quality, f.TargetQuality)
 }

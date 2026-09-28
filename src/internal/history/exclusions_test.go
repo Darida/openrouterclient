@@ -10,7 +10,7 @@ import (
 func failedEntries(n int, at time.Time) []Entry {
 	entries := make([]Entry, n)
 	for i := range entries {
-		entries[i] = Entry{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh}
+		entries[i] = NewEntry(EntryFields{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh})
 	}
 	return entries
 }
@@ -43,7 +43,7 @@ func TestComputeExclusions_whenThreeFailuresToday_thenBelowCap(t *testing.T) {
 
 func TestCountsAsFailure_whenQualityBelowTarget_thenTrue(t *testing.T) {
 	// Arrange
-	e := generatorEntry("m", model.QualityMedium, model.QualityHigh, time.Now())
+	e := generatorFields("g", model.QualityMedium, model.QualityHigh, time.Now())
 
 	// Act
 	got := countsAsFailure(e)
@@ -56,7 +56,7 @@ func TestCountsAsFailure_whenQualityBelowTarget_thenTrue(t *testing.T) {
 
 func TestCountsAsFailure_whenSuccessTookSixtySeconds_thenTrue(t *testing.T) {
 	// Arrange
-	e := generatorEntry("m", model.QualityHigh, model.QualityHigh, time.Now())
+	e := generatorFields("g", model.QualityHigh, model.QualityHigh, time.Now())
 	e.LatencySeconds = 60
 
 	// Act
@@ -70,7 +70,7 @@ func TestCountsAsFailure_whenSuccessTookSixtySeconds_thenTrue(t *testing.T) {
 
 func TestCountsAsFailure_whenUnratedSuccess_thenFalse(t *testing.T) {
 	// Arrange
-	e := generatorEntry("m", "", model.QualityHigh, time.Now())
+	e := generatorFields("g", "", model.QualityHigh, time.Now())
 
 	// Act
 	got := countsAsFailure(e)

@@ -29,7 +29,6 @@ func Open(path string) *Store {
 }
 
 func (s *Store) Append(entry Entry) {
-	validate(entry)
 	s.withLock(func() {
 		entries := s.load()
 		s.save(append(entries, entry))
@@ -54,23 +53,23 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 	var err error
 	s.withLock(func() {
 		entries := s.load()
-		var rated *Entry
-		for i := range entries {
-			e := &entries[i]
-			if e.GenerationID != generationID || e.Role != RoleGenerator {
+		var rated *EntryFields
+		for _, e := range entries {
+			f := e.Fields()
+			if f.GenerationID != generationID || f.Role != RoleGenerator {
 				continue
 			}
-			if e.Source == SourceManual {
+			if f.Source == SourceManual {
 				err = fmt.Errorf("history: generation %q is already rated", generationID)
 				return
 			}
-			rated = e
+			rated = &f
 		}
 		if rated == nil {
 			err = fmt.Errorf("history: no generation %q in history", generationID)
 			return
 		}
-		entry := Entry{
+		entry := NewEntry(EntryFields{
 			Timestamp:     now.UTC(),
 			Model:         rated.Model,
 			GenerationID:  generationID,
@@ -80,8 +79,7 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 			Quality:       q,
 			TargetQuality: rated.TargetQuality,
 			Reason:        reason,
-		}
-		validate(entry)
+		})
 		s.save(append(entries, entry))
 	})
 	return err
@@ -114,9 +112,6 @@ func (s *Store) load() []Entry {
 	var entries []Entry
 	if err := json.Unmarshal(raw, &entries); err != nil {
 		panic(fmt.Sprintf("history: %s is not a valid history file: %v", s.path, err))
-	}
-	for _, e := range entries {
-		validate(e)
 	}
 	return entries
 }
