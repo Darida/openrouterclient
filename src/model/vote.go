@@ -1,4 +1,4 @@
-package openrouterclient
+package model
 
 // Vote is a caller's manual review of a generation it already received.
 type Vote string

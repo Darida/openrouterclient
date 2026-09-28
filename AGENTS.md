@@ -68,9 +68,9 @@ if a future change to that file will need to update it. A comment must
 not assert a fact about a *different* file's current state. Nothing forces
 whoever changes that other file to come fix this comment.
 
-Doc comments on the root package's exported identifiers are the caller's
-only documentation surface. They must stand alone and never point the
-reader to `internal/`.
+Doc comments on exported identifiers in `src/api/` and `src/model/` are
+the caller's only documentation surface. They must stand alone and never
+point the reader to `src/internal/`.
 
 ## Automated post-push code review
 

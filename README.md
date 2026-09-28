@@ -21,10 +21,14 @@ Each call goes through three steps:
 
 ## Layout
 
-- The root package holds the public contract only: `Client`, `Config`,
-  the request and response types, `ReviewVerdict`, `Vote`, and
-  `AttemptsExhaustedError`, plus a thin `New` that wires up `internal/`.
-- `internal/` holds all behavior, split into these packages:
+The repo root holds only module and tooling files (`go.mod`, `git/`,
+docs). All Go code lives under `src/`:
+
+- `src/model/` holds data types only, with no logic: the request and
+  response types, `ReviewVerdict`, `Vote`, and `AttemptsExhaustedError`.
+- `src/api/` holds the client contract: `Client`, `Config`, and a thin
+  `New` that wires up `src/internal/`.
+- `src/internal/` holds all behavior, split into these packages:
   - `chat`: builds the wire payload and parses responses.
   - `hedge`: runs staggered parallel attempts.
   - `generationlog`: polls OpenRouter's `/api/v1/generation` log.
@@ -32,8 +36,7 @@ Each call goes through three steps:
   - `review`: holds the fixed review prompt and schema.
   - `engine`: orchestrates the generate, review, and retry loop.
 
-  These packages never import the root package. The root converts
-  between its public types and theirs.
+  These packages may import `src/model/` but never `src/api/`.
 
 ## Behavior
 

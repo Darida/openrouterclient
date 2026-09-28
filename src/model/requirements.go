@@ -1,4 +1,4 @@
-package openrouterclient
+package model
 
 import "encoding/json"
 

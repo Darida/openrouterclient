@@ -1,4 +1,4 @@
-package openrouterclient
+package model
 
 // ReviewVerdict is the fixed output schema of every automatic review,
 // whatever the caller's rules are. The reviewer must return exactly this
