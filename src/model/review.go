@@ -1,9 +1,6 @@
 package model
 
-// ReviewVerdict is the fixed output schema of every automatic review,
-// whatever the caller's rules are. The reviewer must return exactly this
-// JSON shape: {"status": "APPROVED"|"REJECTED", "notes": [{"rule", "text"}]}.
-// No other fields are allowed.
+// ReviewVerdict is the fixed output schema of every automatic review, whatever the caller's rules.
 type ReviewVerdict struct {
 	Status ReviewStatus `json:"status"`
 	// One entry per violated rule. It is empty when Status is ReviewApproved.
