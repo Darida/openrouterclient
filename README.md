@@ -27,7 +27,7 @@ Each call goes through these steps:
 ## Layout
 
 The repo root holds only module and tooling files (`go.mod`, `git/`,
-docs). All Go code lives under `src/`:
+`bin/`, docs). All Go code lives under `src/`:
 
 - `src/model/` holds data types only, with no logic: the request and
   response types, `ReviewVerdict`, `Quality`, and `AttemptsExhaustedError`.
@@ -44,6 +44,7 @@ docs). All Go code lives under `src/`:
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
+- `src/cmd/generate/` is the command-line program behind `bin/generate`.
 
 ## Behavior
 
@@ -72,6 +73,23 @@ docs). All Go code lives under `src/`:
   than 3 today (UTC), more than 6 in the last 7 days, more than 12 in the
   last 30 days, or more than 24 in total. The exclusion list is passed to
   `openrouter/free`'s router, which then picks a model at random.
+
+## Command line
+
+```sh
+bin/generate bin/example-requirements.json
+```
+
+The script takes one requirements file with the fields `prompt`,
+`reviewRulesPrompt`, `outputSchema` (`name` and `schema`), and
+`targetQuality`. See `bin/example-requirements.json`. It reads the API key
+from `git config --get openrouter.githubapikey`; set it with
+`git config --local openrouter.githubapikey 'YOUR_KEY'`. History goes to
+`history.json` at the repo root, which is tracked in git so exclusions
+carry across machines.
+
+It prints the reviewed result as JSON on stdout and logs on stderr. If
+every attempt fails, it prints the failed attempts on stderr and exits 1.
 
 ## Failure policy
 

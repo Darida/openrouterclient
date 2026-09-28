@@ -1,0 +1,20 @@
+#!/bin/sh
+# Usage: bin/generate <requirements.json>
+# Prints the reviewed result as JSON on stdout; logs go to stderr.
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    echo "usage: bin/generate <requirements.json>" >&2
+    exit 2
+fi
+INPUT="$(realpath "$1")"
+REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+
+if ! OPENROUTER_API_KEY="$(git -C "$REPO_ROOT" config --get openrouter.githubapikey)"; then
+    echo "error: no OpenRouter API key in git config. Set it for this repository with:" >&2
+    echo "  git config --local openrouter.githubapikey 'YOUR_KEY_HERE'" >&2
+    exit 1
+fi
+export OPENROUTER_API_KEY
+
+exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$REPO_ROOT/history.json"
