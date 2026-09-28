@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +81,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 // generateUnreviewed returns the first schema-valid output, recorded unrated.
 func (e *Engine) generateUnreviewed(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator) (model.GeneratedText, error) {
 	e.logger.Info("openrouter: generating without review")
-	gen, failures, ok := e.hedge(ctx, chat.BuildPayload([]chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, e.excludedModels()), outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
+	gen, failures, ok := e.hedge(ctx, []chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema, outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
 	if err := ctx.Err(); err != nil {
 		return model.GeneratedText{}, err
 	}
@@ -97,21 +99,20 @@ func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality,
 // runRound generates from messages and reviews the winner. It returns false
 // when either the generation or the review had no winner.
 func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int) (reviewedRound, []model.FailedAttempt, bool) {
-	excluded := e.excludedModels()
 	e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
-	gen, failures, ok := e.hedge(ctx, chat.BuildPayload(messages, req.OutputSchema, excluded), outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
+	gen, failures, ok := e.hedge(ctx, messages, req.OutputSchema, outputValidator.Validate, history.RoleGenerator, req.TargetQuality)
 	if !ok {
 		return reviewedRound{}, failures, false
 	}
-	result, reviewFailures, ok := e.reviewGeneration(ctx, req, gen, excluded, round)
+	result, reviewFailures, ok := e.reviewGeneration(ctx, req, gen, round)
 	return result, append(failures, reviewFailures...), ok
 }
 
 // reviewGeneration rates gen against the rules and records it with that
 // rating, or with none if the review had no winner.
-func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, excluded []string, round int) (reviewedRound, []model.FailedAttempt, bool) {
+func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.OutputValidationRules))}
-	rev, failures, ok := e.hedge(ctx, chat.BuildPayload(messages, review.Schema(), excluded), review.Validate, history.RoleReviewer, "")
+	rev, failures, ok := e.hedge(ctx, messages, review.Schema(), review.Validate, history.RoleReviewer, "")
 	if !ok {
 		e.recordGeneration(gen, "", req.TargetQuality, "never reviewed")
 		return reviewedRound{}, failures, false
@@ -130,12 +131,15 @@ func (e *Engine) Close() {
 }
 
 // hedge returns as soon as an attempt wins, recording the rest in the
-// background; failures are returned only when nothing won. The generator's
+// background; failures are returned only when nothing won. Each attempt asks
+// a model picked at random from the non-excluded candidates. The generator's
 // winner is left unrecorded, because its quality comes from the review.
-func (e *Engine) hedge(ctx context.Context, payload []byte, validate func(json.RawMessage) error, role history.Role, target model.Quality) (attempt, []model.FailedAttempt, bool) {
+func (e *Engine) hedge(ctx context.Context, messages []chat.Message, schema model.JSONSchema, validate func(json.RawMessage) error, role history.Role, target model.Quality) (attempt, []model.FailedAttempt, bool) {
+	candidates := e.candidateModels()
 	race := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
-		e.logger.Info("openrouter: attempt launched", "role", role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts)
-		return e.runAttempt(attemptCtx, payload, validate)
+		modelID := candidates[rand.IntN(len(candidates))]
+		e.logger.Info("openrouter: attempt launched", "role", role, "attempt", num, "maxAttempts", e.settings.Hedge.MaxAttempts, "model", modelID)
+		return e.runAttempt(attemptCtx, chat.BuildPayload(messages, schema, modelID), validate)
 	})
 	winner, ok := race.Winner()
 	if !ok {
@@ -195,6 +199,21 @@ func (e *Engine) entry(a attempt, role history.Role, q, target model.Quality, re
 		LatencySeconds: a.latency.Seconds(),
 		Reason:         reason,
 	})
+}
+
+// candidateModels panics when exclusions leave no model to ask.
+func (e *Engine) candidateModels() []string {
+	excluded := e.excludedModels()
+	var candidates []string
+	for _, id := range e.catalog.FreeStructuredModels() {
+		if !slices.Contains(excluded, id) {
+			candidates = append(candidates, id)
+		}
+	}
+	if len(candidates) == 0 {
+		panic(fmt.Sprintf("engine: every free structured-output model is excluded: %v", excluded))
+	}
+	return candidates
 }
 
 func (e *Engine) excludedModels() []string {

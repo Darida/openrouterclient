@@ -83,7 +83,7 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		fmt.Fprint(w, `{"data":{"model":"slow/model-20260101:free"}}`)
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data":[{"id":"slow/model:free","canonical_slug":"slow/model-20260101"}]}`)
+		fmt.Fprint(w, `{"data":[{"id":"slow/model:free","canonical_slug":"slow/model-20260101","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]}}]}`)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)

@@ -50,16 +50,16 @@ func TestChatParseResponse_whenContentIsJSON_thenReturnsIt(t *testing.T) {
 	}
 }
 
-func TestChatBuildPayload_whenModelsExcluded_thenAutoRouterDeniesThem(t *testing.T) {
+func TestChatBuildPayload_whenBuilt_thenRequestsTheGivenModel(t *testing.T) {
 	// Arrange
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, []string{"bad/model"}))
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "liquid/lfm-2.5-2.6b:free"))
 
 	// Assert
-	if !strings.Contains(payload, `"allowed_models":["*","!bad/model"]`) {
-		t.Fatalf("payload has no exclusion: %s", payload)
+	if !strings.Contains(payload, `"model":"liquid/lfm-2.5-2.6b:free"`) {
+		t.Fatalf("payload does not request the given model: %s", payload)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T)
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, nil))
+	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free"))
 
 	// Assert
 	if !strings.Contains(payload, `"allow_fallbacks":false`) {

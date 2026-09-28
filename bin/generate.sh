@@ -17,4 +17,8 @@ if ! OPENROUTER_API_KEY="$(git -C "$REPO_ROOT" config --get openrouter.githubapi
 fi
 export OPENROUTER_API_KEY
 
-exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$REPO_ROOT/history.json"
+# Per-user state, never in the repo: see the XDG Base Directory spec's state dir.
+HISTORY_DIR="$HOME/.local/state/openrouterclient"
+mkdir -p "$HISTORY_DIR"
+
+exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$HISTORY_DIR/history.json"

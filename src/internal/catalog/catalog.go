@@ -6,31 +6,54 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
-const fetchTimeout = 30 * time.Second
+const (
+	fetchTimeout = 30 * time.Second
+	cacheTTL     = time.Hour
+)
 
-// Catalog translates the dated model names OpenRouter's generation log uses
-// (canonical slug plus variant, e.g. "vendor/model-20260811:free") into the
-// model ids chat responses use ("vendor/model:free").
+// Catalog is OpenRouter's model list, fetched at most once per cacheTTL.
 type Catalog struct {
 	URL  string
 	HTTP *http.Client
 
-	mu    sync.Mutex
-	byLog map[string][]string
+	mu        sync.Mutex
+	fetchedAt time.Time
+	models    []entry
+	byLog     map[string][]string
 }
 
-// ModelID panics if logName matches no model, or more than one, even after
-// refreshing the catalog, since a new model may have appeared since the last fetch.
+// FreeStructuredModels lists the free models that can answer with a strict
+// json_schema response format, which every request here uses.
+func (c *Catalog) FreeStructuredModels() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if time.Since(c.fetchedAt) >= cacheTTL {
+		c.refresh()
+	}
+	var ids []string
+	for _, m := range c.models {
+		if strings.HasSuffix(m.ID, ":free") && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids
+}
+
+// ModelID translates the dated name OpenRouter's generation log uses
+// ("vendor/model-20260811:free") into the model id chat responses use
+// ("vendor/model:free"). A miss refetches first, since a model may be newer
+// than the cache; it panics unless exactly one model matches.
 func (c *Catalog) ModelID(logName string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.byLog == nil || len(c.byLog[logName]) == 0 {
-		c.byLog = c.fetch()
+	if time.Since(c.fetchedAt) >= cacheTTL || len(c.byLog[logName]) == 0 {
+		c.refresh()
 	}
 	ids := c.byLog[logName]
 	if len(ids) != 1 {
@@ -39,7 +62,17 @@ func (c *Catalog) ModelID(logName string) string {
 	return ids[0]
 }
 
-func (c *Catalog) fetch() map[string][]string {
+func (c *Catalog) refresh() {
+	models := c.fetch()
+	byLog := map[string][]string{}
+	for _, m := range models {
+		key := logNameFor(m.ID, m.CanonicalSlug)
+		byLog[key] = append(byLog[key], m.ID)
+	}
+	c.models, c.byLog, c.fetchedAt = models, byLog, time.Now()
+}
+
+func (c *Catalog) fetch() []entry {
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
@@ -59,23 +92,17 @@ func (c *Catalog) fetch() map[string][]string {
 		panic(fmt.Sprintf("catalog: %s returned HTTP %d: %s", c.URL, resp.StatusCode, body))
 	}
 	var parsed struct {
-		Data []struct {
-			ID            string `json:"id"`
-			CanonicalSlug string `json:"canonical_slug"`
-		} `json:"data"`
+		Data []entry `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Data) == 0 {
 		panic(fmt.Sprintf("catalog: %s returned no models: %v", c.URL, err))
 	}
-	byLog := map[string][]string{}
 	for _, m := range parsed.Data {
 		if m.ID == "" || m.CanonicalSlug == "" {
 			panic(fmt.Sprintf("catalog: model entry without id or canonical_slug: %+v", m))
 		}
-		key := logNameFor(m.ID, m.CanonicalSlug)
-		byLog[key] = append(byLog[key], m.ID)
 	}
-	return byLog
+	return parsed.Data
 }
 
 // Paid and free variants share one canonical slug; the log tells them apart
