@@ -370,5 +370,150 @@
     "targetQuality": "medium",
     "latencySeconds": 0.224678509,
     "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:16:00.941987739Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790626542-sgWPnF6QBqgjMHpLVA12",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 7.73490166
+  },
+  {
+    "timestamp": "2026-09-28T20:16:00.944997462Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626551-Q8FoVtzUpwL2QkdpXzbs",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 1.658488967,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:16:00.948969841Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790626551-tZftZcxLOZd8aEJMhr76",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 9.478819372
+  },
+  {
+    "timestamp": "2026-09-28T20:16:25.332801991Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790626561-JcZkNEecQxDZ30cJIASv",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 19.471192274
+  },
+  {
+    "timestamp": "2026-09-28T20:16:25.332961025Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790626580-QYYLgEASJVSb4Tpvj3oC",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 4.599385079
+  },
+  {
+    "timestamp": "2026-09-28T20:16:58.195296806Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790626585-PLhXNjAbPtKCPrUgQ8PC",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 24.029686892
+  },
+  {
+    "timestamp": "2026-09-28T20:16:58.195382571Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790626611-U1USQPXTzILjsjOAzxL9",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 8.549841471
+  },
+  {
+    "timestamp": "2026-09-28T20:17:21.750684744Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790626618-ORnXZEHKF3OfYmhOqCgT",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 10.290869409
+  },
+  {
+    "timestamp": "2026-09-28T20:17:21.751691711Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626628-hUZ67Iq5PspZhQ9xs7cD",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 0.289715389,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:17:21.758147529Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790626629-SZZtSQ7kHKyVVr0RCdiM",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 12.676775516
+  },
+  {
+    "timestamp": "2026-09-28T20:18:01.446748883Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626642-ZD18Oz2Xt8OQoUDyNRiC",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.354434881,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:18:07.850634167Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790626642-WB9Yslx8quoz5a4l0aeV",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 39.028641875
+  },
+  {
+    "timestamp": "2026-09-28T20:18:07.850868251Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626681-fRQV7NmW7Ou5Ij5MUwMq",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "latencySeconds": 0.238993739,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:18:07.858490428Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790626681-CkOFZ3spjJ5RdwUgE9G4",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 6.164854602
   }
 ]
