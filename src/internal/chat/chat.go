@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -28,6 +29,25 @@ type ProviderError struct {
 	Code     int             `json:"code"`
 	Message  string          `json:"message"`
 	Metadata json.RawMessage `json:"metadata"`
+}
+
+// A rate limit is rejected before any generation exists, so the log never
+// has it; the model appears only in the free-text metadata.raw message.
+var rateLimitedModelPattern = regexp.MustCompile(`^(\S+/\S+) is temporarily rate-limited upstream`)
+
+// RateLimitedModel panics unless metadata.raw names the model in the known wording.
+func (p *ProviderError) RateLimitedModel() string {
+	var metadata struct {
+		Raw string `json:"raw"`
+	}
+	if err := json.Unmarshal(p.Metadata, &metadata); err != nil {
+		panic(fmt.Sprintf("chat: rate-limit metadata is not JSON: %v — %s", err, p.Metadata))
+	}
+	match := rateLimitedModelPattern.FindStringSubmatch(metadata.Raw)
+	if match == nil {
+		panic(fmt.Sprintf("chat: rate-limit message names no model in the known wording: %q", metadata.Raw))
+	}
+	return match[1]
 }
 
 func (p *ProviderError) Error() string {

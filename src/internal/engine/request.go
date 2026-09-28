@@ -58,7 +58,7 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 		if !retryableStatuses[resp.StatusCode] {
 			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
 		}
-		return e.interrupted(ctx, generationID, start, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false
+		return e.providerFailure(ctx, generationID, start, providerErr, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false
 	}
 	if generationID == "" {
 		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body: %s", body))
@@ -68,7 +68,7 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 	var providerErr *chat.ProviderError
 	if errors.As(err, &providerErr) {
 		e.logger.Warn("openrouter: provider error in 200 response", "generationId", generationID, "error", providerErr)
-		return e.interrupted(ctx, generationID, start, providerErr.Error()), false
+		return e.providerFailure(ctx, generationID, start, providerErr, providerErr.Error()), false
 	}
 	if err == nil {
 		err = validate(parsed.Content)
@@ -80,6 +80,15 @@ func (e *Engine) runAttempt(ctx context.Context, payload []byte, validate func(j
 	}
 	result.outcome = history.OutcomeSuccess
 	return result, true
+}
+
+// A rate-limited request never ran, so its model comes from the error text
+// instead of the generation log.
+func (e *Engine) providerFailure(ctx context.Context, generationID string, start time.Time, providerErr *chat.ProviderError, reason string) attempt {
+	if providerErr.Code != http.StatusTooManyRequests {
+		return e.interrupted(ctx, generationID, start, reason)
+	}
+	return attempt{model: providerErr.RateLimitedModel(), generationID: generationID, outcome: history.OutcomeFailed, latency: time.Since(start), reason: reason}
 }
 
 // X-Generation-Id arrives with the headers, so a request that failed after

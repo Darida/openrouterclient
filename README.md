@@ -67,7 +67,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 - **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
   a request, so an upstream failure can arrive as an `error` object inside
   a 200 body as well as with a transient non-200 status. Both count as a
-  failure of the model the log names. Requests go out with provider
+  failure of the model the log names. A rate limit (error code 429) is
+  rejected before any generation exists, so the log never has it. Its
+  model is parsed from the error's `metadata.raw` message instead, and an
+  unrecognized message panics. Requests go out with provider
   fallbacks disabled, so a failing provider fails that attempt instead of
   being silently retried elsewhere. If the log doesn't
   resolve within its window, the process panics. A history entry never

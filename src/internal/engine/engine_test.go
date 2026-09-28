@@ -50,6 +50,7 @@ type fakeOpenRouter struct {
 	mu          sync.Mutex
 	generations []chatRequest
 	reviews     int
+	logLookups  int
 	generate    func(w http.ResponseWriter, r *http.Request, n int)
 	review      func(n int) string
 }
@@ -76,6 +77,9 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		f.generate(w, r, n)
 	})
 	mux.HandleFunc("/generation", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.logLookups++
+		f.mu.Unlock()
 		fmt.Fprint(w, `{"data":{"model":"slow/model-20260101:free"}}`)
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
@@ -297,4 +301,52 @@ func TestEngineGenerateText_whenProviderErrorIn200Body_thenRecordsFailureAgainst
 		}
 	}
 	t.Fatalf("history %+v has no failed entry for gen-overloaded against slow/model:free", entries)
+}
+
+func rateLimitedFirst(w http.ResponseWriter, r *http.Request, n int) {
+	if n == 1 {
+		w.Header().Set("X-Generation-Id", "gen-limited")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`)
+		return
+	}
+	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
+}
+
+func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstModelInMessage(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noNotes}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+
+	// Act
+	entries := readHistory(t, path)
+
+	// Assert
+	for _, e := range entries {
+		if f := e.Fields(); f.GenerationID == "gen-limited" && f.Model == "qwen/qwen3.8-27b:free" && f.Outcome == history.OutcomeFailed {
+			return
+		}
+	}
+	t.Fatalf("history %+v has no failed entry for gen-limited against qwen/qwen3.8-27b:free", entries)
+}
+
+func TestEngineGenerateText_whenRateLimited_thenNeverPollsGenerationLog(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noNotes}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("GenerateText failed: %v", err)
+	}
+
+	// Assert
+	if fake.logLookups != 0 {
+		t.Fatalf("generation log polled %d times; want 0", fake.logLookups)
+	}
 }

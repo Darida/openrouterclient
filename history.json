@@ -58,5 +58,97 @@
     "quality": "high",
     "targetQuality": "medium",
     "latencySeconds": 38.164837688
+  },
+  {
+    "timestamp": "2026-09-28T19:43:55.655931095Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790624602-wZr6ijqalwUvDqIZl6lm",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 33.481505104
+  },
+  {
+    "timestamp": "2026-09-28T19:43:55.657378178Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790624561-BhYeBQDqb14fy4465h8c",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 40.496933019,
+    "reason": "- [3] The haiku must mention night or darkness. None of the three lines contain references to night or darkness."
+  },
+  {
+    "timestamp": "2026-09-28T19:45:52.393759967Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790624656-XNMDVZd4gF7GbNLAR6js",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 72.689984333
+  },
+  {
+    "timestamp": "2026-09-28T19:45:52.394814514Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790624716-3ylFGuzdGEm9Mb437VOq",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 35.768263773
+  },
+  {
+    "timestamp": "2026-09-28T19:45:52.395740877Z",
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "generationId": "gen-1790624636-Jpg8tL0k6qWXbp3I2Gpe",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 20.649297317,
+    "reason": "- [2] Line 3 ('Code finally sings') has 4 syllables instead of the required 5; revise the line to achieve a proper 5-7-5 pattern."
+  },
+  {
+    "timestamp": "2026-09-28T19:46:05.061144735Z",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "generationId": "gen-1790624757-A3S8P28tCvHYTsdAx8Mh",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 7.58549686
+  },
+  {
+    "timestamp": "2026-09-28T19:46:05.061954159Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790624752-KZWKyFanvHozNoVlrPBF",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "high",
+    "targetQuality": "medium",
+    "latencySeconds": 4.816367025
+  },
+  {
+    "timestamp": "2026-09-28T19:46:14.706942925Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790624768-Ln4gpaoIANXdkLae51vv",
+    "role": "reviewer",
+    "source": "auto",
+    "outcome": "success",
+    "latencySeconds": 5.900937924
+  },
+  {
+    "timestamp": "2026-09-28T19:46:14.708044662Z",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "generationId": "gen-1790624765-4aviBfCCDLZngeWXiZRU",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "success",
+    "quality": "medium",
+    "targetQuality": "medium",
+    "latencySeconds": 3.490604097,
+    "reason": "- [The haiku must mention night or darkness.] The haiku lines do not contain any reference to night or darkness. To fix, include a word like 'night', 'dark', 'midnight', etc. in one of the three lines while preserving the 5-7-5 syllable pattern."
   }
 ]
