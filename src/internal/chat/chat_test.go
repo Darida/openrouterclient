@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -73,4 +74,30 @@ func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T)
 	if !strings.Contains(payload, `"allow_fallbacks":false`) {
 		t.Fatalf("payload allows fallbacks: %s", payload)
 	}
+}
+
+func TestChatParseResponse_whenBodyCarriesProviderError_thenReturnsProviderError(t *testing.T) {
+	// Arrange
+	body := []byte(`{"id":"gen-1","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
+
+	// Act
+	_, err := ParseResponse(body)
+
+	// Assert
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Code != 503 {
+		t.Fatalf("err = %v; want a 503 ProviderError", err)
+	}
+}
+
+func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"))
 }

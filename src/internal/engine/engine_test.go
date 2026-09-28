@@ -52,7 +52,6 @@ type fakeOpenRouter struct {
 	reviews     int
 	generate    func(w http.ResponseWriter, r *http.Request, n int)
 	review      func(n int) string
-	logModel    string
 }
 
 func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
@@ -77,13 +76,17 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		f.generate(w, r, n)
 	})
 	mux.HandleFunc("/generation", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"data":{"model":%q}}`, f.logModel)
+		fmt.Fprint(w, `{"data":{"model":"slow/model-20260101:free"}}`)
+	})
+	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[{"id":"slow/model:free","canonical_slug":"slow/model-20260101"}]}`)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	settings := Settings{
 		ChatURL:          server.URL + "/chat",
 		GenerationLogURL: server.URL + "/generation",
+		CatalogURL:       server.URL + "/models",
 		Hedge:            hedge.Timing{MaxAttempts: 2, Stagger: 5 * time.Second, AbortGrace: 50 * time.Millisecond, AttemptTimeout: 200 * time.Millisecond},
 		GenerationLog:    generationlog.Timing{Window: 500 * time.Millisecond, PollInterval: 10 * time.Millisecond},
 		MaxRounds:        3,
@@ -193,8 +196,7 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsModelFromGenerationLo
 			}
 			reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 		},
-		review:   noNotes,
-		logModel: "slow/free",
+		review: noNotes,
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
@@ -207,11 +209,11 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsModelFromGenerationLo
 
 	// Assert
 	for _, e := range entries {
-		if f := e.Fields(); f.GenerationID == "gen-slow" && f.Model == "slow/free" && f.Outcome == history.OutcomeTimeout {
+		if f := e.Fields(); f.GenerationID == "gen-slow" && f.Model == "slow/model:free" && f.Outcome == history.OutcomeTimeout {
 			return
 		}
 	}
-	t.Fatalf("history %+v has no timeout entry for slow/free", entries)
+	t.Fatalf("history %+v has no timeout entry for slow/model:free", entries)
 }
 
 func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t *testing.T) {
@@ -264,4 +266,35 @@ func TestEngineRate_whenGenerationReturned_thenRecordsManualRating(t *testing.T)
 	if err != nil {
 		t.Fatalf("Rate: %v", err)
 	}
+}
+
+func TestEngineGenerateText_whenProviderErrorIn200Body_thenRecordsFailureAgainstLogModel(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			if n == 1 {
+				w.Header().Set("X-Generation-Id", "gen-overloaded")
+				fmt.Fprint(w, `{"id":"gen-overloaded","error":{"message":"Upstream error: overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
+				return
+			}
+			reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+
+	// Act
+	entries := readHistory(t, path)
+
+	// Assert
+	for _, e := range entries {
+		if f := e.Fields(); f.GenerationID == "gen-overloaded" && f.Model == "slow/model:free" && f.Outcome == history.OutcomeFailed {
+			return
+		}
+	}
+	t.Fatalf("history %+v has no failed entry for gen-overloaded against slow/model:free", entries)
 }

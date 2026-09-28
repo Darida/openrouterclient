@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Darida/openrouterclient/src/internal/catalog"
 	"github.com/Darida/openrouterclient/src/internal/chat"
 	"github.com/Darida/openrouterclient/src/internal/generationlog"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
@@ -24,6 +25,7 @@ type Engine struct {
 	apiKey   string
 	http     *http.Client
 	log      *generationlog.Client
+	catalog  *catalog.Catalog
 	history  *history.Store
 	logger   *slog.Logger
 }
@@ -35,6 +37,7 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 		apiKey:   apiKey,
 		http:     httpClient,
 		log:      &generationlog.Client{URL: settings.GenerationLogURL, APIKey: apiKey, HTTP: httpClient, Timing: settings.GenerationLog},
+		catalog:  &catalog.Catalog{URL: settings.CatalogURL, HTTP: httpClient},
 		history:  store,
 		logger:   logger,
 	}

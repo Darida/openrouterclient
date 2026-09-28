@@ -56,9 +56,20 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   Both generation and review calls are hedged this way.
 - **Attribution.** Every attempt OpenRouter accepted, which is known from
   its `X-Generation-Id` header, is attributed to a real model. An attempt
-  that times out, breaks mid-body, or is aborted after another attempt won
-  is aborted for good. Its model is then resolved by polling the
-  generation log for that id, and it is recorded as a failure. If the log doesn't
+  that times out, breaks mid-body, is aborted after another attempt won, or
+  returns a provider error has its connection killed first, because
+  OpenRouter only logs a generation once its connection is gone. Its model
+  is then resolved by polling the generation log for that id, for up to 3
+  minutes, and it is recorded as a failure. The log names models by dated
+  slug (`vendor/model-20260811:free`), which is translated to the
+  response's model id (`vendor/model:free`) through OpenRouter's model
+  catalog.
+- **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
+  a request, so an upstream failure can arrive as an `error` object inside
+  a 200 body as well as with a transient non-200 status. Both count as a
+  failure of the model the log names. Requests go out with provider
+  fallbacks disabled, so a failing provider fails that attempt instead of
+  being silently retried elsewhere. If the log doesn't
   resolve within its window, the process panics. A history entry never
   records a guessed or placeholder model. A request OpenRouter never
   accepted has no model, so it is reported in the returned error but not
@@ -105,8 +116,10 @@ This library never falls back and never swallows a failure.
   model failure. Any other non-200 status means the request or the key is
   wrong, so it panics.
 - Anything unexpected panics, with the full raw body in the message. That
-  includes a response with no `model`, a 200 response with no
-  `X-Generation-Id`, a generation log that never resolves or answers with
+  includes a response with neither `model` nor `error`, a non-200 body
+  that isn't an OpenRouter error object, a 200 response with no
+  `X-Generation-Id`, a log model name the catalog can't match to exactly
+  one model, a generation log that never resolves or answers with
   an unexpected status, an invalid `OutputSchema` or `TargetQuality`, and
   an unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.
