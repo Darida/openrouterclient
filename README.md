@@ -47,7 +47,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/` is the command-line program behind `bin/generate`.
+- `src/cmd/generate/` is the command-line program behind `bin/generate.sh`.
 
 ## Behavior
 
@@ -102,7 +102,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate bin/example-requirements.json
+bin/generate.sh bin/example-requirements.json
 ```
 
 The script takes one requirements file with the fields `prompt`,

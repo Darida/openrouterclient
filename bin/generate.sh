@@ -1,10 +1,10 @@
 #!/bin/sh
-# Usage: bin/generate <requirements.json>
+# Usage: bin/generate.sh <requirements.json>
 # Prints the reviewed result as JSON on stdout; logs go to stderr.
 set -eu
 
 if [ "$#" -ne 1 ]; then
-    echo "usage: bin/generate <requirements.json>" >&2
+    echo "usage: bin/generate.sh <requirements.json>" >&2
     exit 2
 fi
 INPUT="$(realpath "$1")"
