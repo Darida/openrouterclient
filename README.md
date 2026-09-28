@@ -6,9 +6,11 @@ back JSON that matches a schema you supply. It is ported from
 
 Each call goes through these steps:
 
-1. **Generate.** The prompt is sent to `openrouter/free` with a strict
-   `json_schema` response format. Models the local history marks as
-   unreliable are excluded.
+1. **Generate.** Each attempt picks a model at random from the free models
+   that support structured output, minus those the local history marks as
+   unreliable, and sends the prompt to it with a strict `json_schema`
+   response format. The model list comes from OpenRouter's catalog, cached
+   in memory for an hour.
 2. **Review.** A follow-up request continues the same conversation. It
    sends the generated answer back, followed by a fixed review
    instruction plus the caller's `OutputValidationRules`. The reply must match
@@ -96,8 +98,8 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   target of the request that produced it, or if it took 60s or longer. A
   model is excluded once its failures exceed any of these limits: more
   than 3 today (UTC), more than 6 in the last 7 days, more than 12 in the
-  last 30 days, or more than 24 in total. The exclusion list is passed to
-  `openrouter/free`'s router, which then picks a model at random.
+  last 30 days, or more than 24 in total. Excluded models are never
+  picked; if every candidate is excluded, the call panics.
 
 ## Command line
 
