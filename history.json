@@ -310,5 +310,65 @@
     "source": "auto",
     "outcome": "success",
     "latencySeconds": 3.723984273
+  },
+  {
+    "timestamp": "2026-09-28T20:15:41.226584616Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626540-Zqvp6tCwiKiwNg7VayHz",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.509598986,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:15:41.228491359Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626540-q1s8H89LVQqNUZZmFgzS",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.237781922,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:15:41.230225193Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626541-rHCJYw9EKrmiOuJS1ohd",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.196743307,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:15:49.804566675Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626541-oeoHMVREowEPmMwxM7Hr",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.320602826,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
+  },
+  {
+    "timestamp": "2026-09-28T20:15:49.806692142Z",
+    "model": "qwen/qwen3.8-27b:free",
+    "generationId": "gen-1790626541-tk2lawFvwZx7AJxyza7Q",
+    "role": "generator",
+    "source": "auto",
+    "outcome": "failed",
+    "quality": "unusable",
+    "targetQuality": "medium",
+    "latencySeconds": 0.224678509,
+    "reason": "HTTP 429: provider error 429: Provider returned error (metadata: {\"raw\":\"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"ModelRun\",\"is_byok\":false,\"provider_error_code\":\"429\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\"})"
   }
 ]
