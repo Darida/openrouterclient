@@ -110,7 +110,7 @@ func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequireme
 // reviewGeneration rates gen against the rules and records it with that
 // rating, or with none if the review had no winner.
 func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, round int) (reviewedRound, []model.FailedAttempt, bool) {
-	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.OutputValidationRules))}
+	messages := review.Messages(req.Prompt, gen.content, req.OutputValidationRules)
 	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag, timeout: req.Timeout}, messages, review.Schema(), review.Validate)
 	if !ok {
 		e.recordGeneration(gen, req, "", "never reviewed")

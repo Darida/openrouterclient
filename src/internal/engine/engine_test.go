@@ -46,6 +46,7 @@ type chatRequest struct {
 		} `json:"json_schema"`
 	} `json:"response_format"`
 	Messages []struct {
+		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"messages"`
 }
@@ -55,7 +56,7 @@ type chatRequest struct {
 type fakeOpenRouter struct {
 	mu          sync.Mutex
 	generations []chatRequest
-	reviews     int
+	reviews     []chatRequest
 	generate    func(w http.ResponseWriter, r *http.Request, n int)
 	review      func(n int) string
 }
@@ -70,8 +71,8 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		}
 		f.mu.Lock()
 		if req.ResponseFormat.JSONSchema.Name == "review_verdict" {
-			f.reviews++
-			n := f.reviews
+			f.reviews = append(f.reviews, req)
+			n := len(f.reviews)
 			f.mu.Unlock()
 			reply(w, "gen-review-"+fmt.Sprint(n), "reviewer/free", f.review(n))
 			return
@@ -459,8 +460,8 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *tes
 	got, err := engine.GenerateText(context.Background(), unreviewed)
 
 	// Assert
-	if err != nil || got.Review != nil || fake.reviews != 0 {
-		t.Fatalf("got %+v, %v, %d reviews; want unreviewed content", got, err, fake.reviews)
+	if err != nil || got.Review != nil || len(fake.reviews) != 0 {
+		t.Fatalf("got %+v, %v, %d reviews; want unreviewed content", got, err, len(fake.reviews))
 	}
 }
 
@@ -480,8 +481,8 @@ func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	if !errors.As(err, &exhausted) || fake.reviews != 0 {
-		t.Fatalf("err=%v reviews=%d; want AttemptsExhaustedError and no review", err, fake.reviews)
+	if !errors.As(err, &exhausted) || len(fake.reviews) != 0 {
+		t.Fatalf("err=%v reviews=%d; want AttemptsExhaustedError and no review", err, len(fake.reviews))
 	}
 }
 
@@ -629,4 +630,106 @@ func TestEngineValidateRequirements_whenTimeoutZero_thenPanics(t *testing.T) {
 
 	// Act
 	validateRequirements(untimed)
+}
+
+// correctedOnce flags the first output, so the run holds a correction and a
+// second review.
+func correctedOnce(t *testing.T) *fakeOpenRouter {
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, fmt.Sprintf("gen-%d", n), "writer/free", fmt.Sprintf(`{"fruit":"apple-%d"}`, n))
+		},
+		review: func(n int) string {
+			if n == 1 {
+				return `{"notes":[{"rule":"1","text":"Apples are not yellow."}],"totalBadScore":1}`
+			}
+			return `{"notes":[],"totalBadScore":0}`
+		},
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+	return fake
+}
+
+func roles(req chatRequest) []string {
+	var got []string
+	for _, m := range req.Messages {
+		got = append(got, m.Role)
+	}
+	return got
+}
+
+func TestEngineGenerateText_whenReviewing_thenSendsSystemUserUserMessages(t *testing.T) {
+	// Arrange
+	fake := correctedOnce(t)
+
+	// Act
+	got := roles(fake.reviews[0])
+
+	// Assert
+	if strings.Join(got, ",") != "system,user,user" {
+		t.Fatalf("review roles = %v; want system, user, user", got)
+	}
+}
+
+func TestEngineGenerateText_whenReviewing_thenNeverSendsAssistantMessage(t *testing.T) {
+	// Arrange
+	fake := correctedOnce(t)
+
+	// Act
+	var assistantTurns int
+	for _, req := range fake.reviews {
+		for _, role := range roles(req) {
+			if role == "assistant" {
+				assistantTurns++
+			}
+		}
+	}
+
+	// Assert
+	if len(fake.reviews) != 2 || assistantTurns != 0 {
+		t.Fatalf("%d reviews carry %d assistant messages; want 2 reviews with none", len(fake.reviews), assistantTurns)
+	}
+}
+
+func TestEngineGenerateText_whenReviewing_thenSystemMessageCarriesValidationRules(t *testing.T) {
+	// Arrange
+	fake := correctedOnce(t)
+
+	// Act
+	system := fake.reviews[0].Messages[0].Content
+
+	// Assert
+	if !strings.Contains(system, requirements.OutputValidationRules) {
+		t.Fatalf("system message %q lacks the validation rules", system)
+	}
+}
+
+func TestEngineGenerateText_whenReviewing_thenUserMessagesCarryPromptThenOutput(t *testing.T) {
+	// Arrange
+	fake := correctedOnce(t)
+
+	// Act
+	messages := fake.reviews[1].Messages
+
+	// Assert
+	if !strings.Contains(messages[1].Content, requirements.Prompt) || !strings.Contains(messages[2].Content, `{"fruit":"apple-2"}`) {
+		t.Fatalf("review messages %+v; want the prompt, then the second generation's output", messages)
+	}
+}
+
+func TestEngineGenerateText_whenCorrecting_thenGeneratorContinuesItsOwnConversation(t *testing.T) {
+	// Arrange
+	fake := correctedOnce(t)
+
+	// Act
+	correction := fake.generations[1]
+
+	// Assert
+	if strings.Join(roles(correction), ",") != "user,assistant,user" || correction.Messages[0].Content != requirements.Prompt || correction.Messages[1].Content != `{"fruit":"apple-1"}` {
+		t.Fatalf("correction messages %+v; want the prompt, the first output as assistant, then the notes", correction.Messages)
+	}
 }

@@ -17,9 +17,12 @@ Each call goes through these steps:
    price plus `MaxOutputTokens` × completion price, and only those at most
    10% above the 30th-percentile estimate remain. The model list comes from
    OpenRouter's catalog, cached in memory for an hour.
-2. **Review.** A follow-up request continues the same conversation. It
-   sends the generated answer back, followed by a fixed review
-   instruction plus the caller's `OutputValidationRules`. Each rule may
+2. **Review.** A separate request asks a model to review the output as
+   someone else's work, never as its own reply. A fixed system prompt
+   casts it as a skeptical senior reviewer checking a junior's work and
+   carries the caller's `OutputValidationRules`. One user message then
+   holds the caller's prompt as the junior's task, and a second holds the
+   generated output. Each rule may
    state a bad score for violating it; a rule that states none counts 1.
    The reply must match the fixed `ReviewVerdict` schema: a list of notes
    plus the total bad score of the violated rules. A total of 0 is high, up
