@@ -18,6 +18,9 @@ func validate(f EntryFields) error {
 	if err := validateSource(f); err != nil {
 		return fmt.Errorf("invalid entry %+v: %w", f, err)
 	}
+	if err := validateReviewedGenerationID(f); err != nil {
+		return fmt.Errorf("invalid entry %+v: %w", f, err)
+	}
 	if f.Timestamp.IsZero() || f.Model == "" || f.Tag == "" {
 		return fmt.Errorf("invalid entry %+v: timestamp, model, and tag are required", f)
 	}
@@ -42,9 +45,6 @@ func validateRole(f EntryFields) error {
 		}
 	default:
 		return errors.New("unknown role")
-	}
-	if f.ReviewedGenerationID != "" && (f.Role != RoleReviewer || f.Source != SourceAuto || f.Outcome != OutcomeSuccess) {
-		return errors.New("only a successful automatic reviewer entry names a reviewedGenerationId")
 	}
 	return nil
 }
@@ -77,6 +77,13 @@ func validateSource(f EntryFields) error {
 		}
 	default:
 		return errors.New("unknown source")
+	}
+	return nil
+}
+
+func validateReviewedGenerationID(f EntryFields) error {
+	if f.ReviewedGenerationID != "" && (f.Role != RoleReviewer || f.Source != SourceAuto || f.Outcome != OutcomeSuccess) {
+		return errors.New("only a successful automatic reviewer entry names a reviewedGenerationId")
 	}
 	return nil
 }

@@ -96,7 +96,7 @@ func TestStoreOpen_whenFileMalformed_thenPanics(t *testing.T) {
 	Open(path)
 }
 
-func TestNewEntry_whenFailedOutcomeHasRatedQuality_thenPanics(t *testing.T) {
+func TestEntryNew_whenFailedOutcomeHasRatedQuality_thenPanics(t *testing.T) {
 	// Arrange
 	fields := generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.Outcome = OutcomeTimeout
@@ -134,7 +134,7 @@ func refusedFields(at time.Time) EntryFields {
 	return EntryFields{Timestamp: at, Model: "m", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeRefused, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: "t"}
 }
 
-func TestNewEntry_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing.T) {
+func TestEntryNew_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing.T) {
 	// Arrange
 	fields := refusedFields(time.Now())
 
@@ -147,7 +147,7 @@ func TestNewEntry_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing
 	}
 }
 
-func TestNewEntry_whenFailedOutcomeLacksGenerationID_thenPanics(t *testing.T) {
+func TestEntryNew_whenFailedOutcomeLacksGenerationID_thenPanics(t *testing.T) {
 	// Arrange
 	fields := refusedFields(time.Now())
 	fields.Outcome = OutcomeFailed
@@ -177,7 +177,7 @@ func TestStoreRecordManual_whenGenerationIDEmpty_thenErrors(t *testing.T) {
 	}
 }
 
-func TestNewEntry_whenTimeoutMissing_thenPanics(t *testing.T) {
+func TestEntryNew_whenTimeoutMissing_thenPanics(t *testing.T) {
 	// Arrange
 	fields := generatorFields("g", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.TimeoutSeconds = 0
@@ -304,7 +304,7 @@ func TestStoreRecordManual_whenReviewersRatedLow_thenReviewerModelExcluded(t *te
 	}
 }
 
-func TestNewEntry_whenGeneratorNamesReviewedGeneration_thenPanics(t *testing.T) {
+func TestEntryNew_whenGeneratorNamesReviewedGeneration_thenPanics(t *testing.T) {
 	// Arrange
 	fields := generatorFields("gen-g", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.ReviewedGenerationID = "gen-other"
