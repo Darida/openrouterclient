@@ -33,6 +33,8 @@ type raceLabel struct {
 	tag    string
 	// The request's Timeout, against which history judges a success slow.
 	timeout time.Duration
+	// Empty for the generator; for the reviewer, the generation it judges.
+	reviewed string
 }
 
 // reviewedRound is one generation plus the automatic review that rated it.

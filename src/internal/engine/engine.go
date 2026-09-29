@@ -71,7 +71,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		if !quality.Below(result.quality, req.TargetQuality) {
 			return result.generatedText(), nil
 		}
-		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: result.gen.model, GenerationID: result.gen.generationID, Quality: result.quality, Reason: review.FormatNotes(result.verdict.Notes)})
+		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: result.gen.model, GenerationID: result.gen.generationID, Quality: result.quality, Reason: review.FormatNotes(result.verdict.Notes), ReviewGenerationID: result.rev.generationID})
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
@@ -112,7 +112,7 @@ func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequireme
 // rating, or with none if the review had no winner.
 func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	messages := review.Messages(req.Prompt, gen.content, req.OutputValidationRules)
-	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag, timeout: req.Timeout}, messages, review.Schema(), review.Validate)
+	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag, timeout: req.Timeout, reviewed: gen.generationID}, messages, review.Schema(), review.Validate)
 	if !ok {
 		e.recordGeneration(gen, req, "", "never reviewed")
 		return reviewedRound{}, failures, false
@@ -175,7 +175,7 @@ func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel)
 		e.logger.Info("openrouter: attempt", "role", role, "n", i+1, "model", a.model, "outcome", a.outcome, "latency", a.latency.Round(time.Millisecond), "resends", a.resends)
 		switch {
 		case role == history.RoleReviewer:
-			e.history.Append(e.entry(a, label, "", ""))
+			e.history.Append(reviewerEntry(a, label, outcome.IsWinner(i)))
 		case !outcome.IsWinner(i):
 			e.history.Append(e.entry(a, label, "", "succeeded after another attempt won"))
 		}
@@ -196,8 +196,21 @@ func (e *Engine) recordGeneration(gen attempt, req model.TextGenerationRequireme
 	e.history.Append(e.entry(gen, generatorLabel(req), rated, reason))
 }
 
+// Only the winner's verdict rated the generation, so only it links there.
+func reviewerEntry(a attempt, label raceLabel, won bool) history.Entry {
+	fields := entryFields(a, label, "", "")
+	if won {
+		fields.ReviewedGenerationID = label.reviewed
+	}
+	return history.NewEntry(fields)
+}
+
 func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason string) history.Entry {
-	return history.NewEntry(history.EntryFields{
+	return history.NewEntry(entryFields(a, label, q, reason))
+}
+
+func entryFields(a attempt, label raceLabel, q model.Quality, reason string) history.EntryFields {
+	return history.EntryFields{
 		Timestamp:      time.Now().UTC(),
 		Model:          a.model,
 		GenerationID:   a.generationID,
@@ -210,7 +223,7 @@ func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason strin
 		TimeoutSeconds: label.timeout.Seconds(),
 		Reason:         reason,
 		Tag:            label.tag,
-	})
+	}
 }
 
 // candidateModels drops models whose context can't hold the request, then

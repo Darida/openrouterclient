@@ -804,3 +804,48 @@ func TestEngineGenerateText_whenCorrecting_thenGeneratorContinuesItsOwnConversat
 		t.Fatalf("correction messages %+v; want the prompt, the first output as assistant, then the notes", correction.Messages)
 	}
 }
+
+func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGeneration(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+
+	// Act
+	engine.Close()
+	entries := readHistory(t, path)
+
+	// Assert
+	for _, e := range entries {
+		if f := e.Fields(); f.GenerationID == "gen-review-1" && f.ReviewedGenerationID == "gen-1" {
+			return
+		}
+	}
+	t.Fatalf("history = %+v; want the reviewer entry linked to gen-1", entries)
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewGenerationID(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneRetry := requirements
+	oneRetry.MaxReviewRetries = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneRetry)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || exhausted.Attempts[0].ReviewGenerationID != "gen-review-1" {
+		t.Fatalf("err = %v; want the first below-target attempt to name gen-review-1", err)
+	}
+}

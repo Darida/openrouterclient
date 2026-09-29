@@ -23,6 +23,8 @@ type Review struct {
 	Verdict ReviewVerdict
 	// The quality this review assigned to the generation it judged.
 	Quality      Quality
-	Model        string
+	Model string
+	// The review's own generation. Rating it low clears Quality from history,
+	// so the judged generation no longer counts for or against its model.
 	GenerationID string
 }

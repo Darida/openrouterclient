@@ -42,8 +42,10 @@ func (s *Store) Exclusions(now time.Time, tag string) Exclusions {
 	return computeExclusions(entries, now, tag)
 }
 
-// RecordManual returns an error for caller mistakes: an invalid quality, an
-// empty id, an id with no automatic generator entry, or an id already rated.
+// RecordManual rates a generator's or a reviewer's generation. Rating a
+// reviewer low also clears the automatic rating its verdict gave. It returns
+// an error for caller mistakes: an invalid quality, an empty id, an id with
+// no automatic entry, or an id already rated.
 func (s *Store) RecordManual(generationID string, q model.Quality, reason string, now time.Time) error {
 	if !quality.IsRating(q) {
 		return fmt.Errorf("history: manual quality must be high, medium, or low, got %q", q)
@@ -60,7 +62,7 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 		var rated *EntryFields
 		for _, e := range entries {
 			f := e.Fields()
-			if f.GenerationID != generationID || f.Role != RoleGenerator {
+			if f.GenerationID != generationID {
 				continue
 			}
 			if f.Source == SourceManual {
@@ -77,7 +79,7 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 			Timestamp:      now.UTC(),
 			Model:          rated.Model,
 			GenerationID:   generationID,
-			Role:           RoleGenerator,
+			Role:           rated.Role,
 			Source:         SourceManual,
 			Outcome:        OutcomeSuccess,
 			Quality:        q,
@@ -86,9 +88,28 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 			Reason:         reason,
 			Tag:            rated.Tag,
 		})
+		if q == model.QualityLow && rated.ReviewedGenerationID != "" {
+			unrateReviewed(entries, rated.ReviewedGenerationID, generationID, reason)
+		}
 		s.save(append(entries, entry))
 	})
 	return err
+}
+
+// unrateReviewed clears the automatic rating a rejected reviewer gave, in
+// place, so it stops counting toward exclusion. Manual ratings stay.
+func unrateReviewed(entries []Entry, reviewedID, reviewerID, reason string) {
+	for i, e := range entries {
+		f := e.Fields()
+		if f.GenerationID != reviewedID || f.Role != RoleGenerator || f.Source != SourceAuto {
+			continue
+		}
+		f.Quality = ""
+		f.Reason = fmt.Sprintf("unrated: reviewer %s rated low: %s", reviewerID, reason)
+		entries[i] = NewEntry(f)
+		return
+	}
+	panic(fmt.Sprintf("history: reviewer %s links to generation %q, which has no automatic generator entry", reviewerID, reviewedID))
 }
 
 func (s *Store) withLock(fn func()) {

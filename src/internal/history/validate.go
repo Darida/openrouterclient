@@ -18,6 +18,9 @@ func validate(f EntryFields) error {
 	if err := validateSource(f); err != nil {
 		return fmt.Errorf("invalid entry %+v: %w", f, err)
 	}
+	if err := validateReviewedGenerationID(f); err != nil {
+		return fmt.Errorf("invalid entry %+v: %w", f, err)
+	}
 	if f.Timestamp.IsZero() || f.Model == "" || f.Tag == "" {
 		return fmt.Errorf("invalid entry %+v: timestamp, model, and tag are required", f)
 	}
@@ -37,8 +40,8 @@ func validateRole(f EntryFields) error {
 			return errors.New("a generator entry needs a high, medium, or low targetQuality")
 		}
 	case RoleReviewer:
-		if f.TargetQuality != "" || f.Source != SourceAuto {
-			return errors.New("a reviewer entry is automatic and has no targetQuality")
+		if f.TargetQuality != "" {
+			return errors.New("a reviewer entry has no targetQuality")
 		}
 	default:
 		return errors.New("unknown role")
@@ -52,8 +55,8 @@ func validateOutcome(f EntryFields) error {
 		if f.Quality != "" && !quality.IsRating(f.Quality) {
 			return errors.New("a successful entry's quality must be empty, high, medium, or low")
 		}
-		if f.Role == RoleReviewer && f.Quality != "" {
-			return errors.New("a reviewer's own output is never rated")
+		if f.Role == RoleReviewer && f.Source == SourceAuto && f.Quality != "" {
+			return errors.New("a reviewer's own output is rated only manually")
 		}
 	case OutcomeFailed, OutcomeTimeout, OutcomeInvalidOutput, OutcomeRefused:
 		if f.Quality != model.QualityUnusable {
@@ -74,6 +77,13 @@ func validateSource(f EntryFields) error {
 		}
 	default:
 		return errors.New("unknown source")
+	}
+	return nil
+}
+
+func validateReviewedGenerationID(f EntryFields) error {
+	if f.ReviewedGenerationID != "" && (f.Role != RoleReviewer || f.Source != SourceAuto || f.Outcome != OutcomeSuccess) {
+		return errors.New("only a successful automatic reviewer entry names a reviewedGenerationId")
 	}
 	return nil
 }

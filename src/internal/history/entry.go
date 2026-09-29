@@ -44,8 +44,8 @@ type EntryFields struct {
 	Source       Source    `json:"source"`
 	Outcome      Outcome   `json:"outcome"`
 	// Unusable for every failed outcome. Empty for a successful generation
-	// nobody rated: a reviewer's own output, or a generation that lost the
-	// hedge or never got a review.
+	// nobody rated: a reviewer's own output, a generation that lost the hedge
+	// or never got a review, or one whose reviewer was manually rated low.
 	Quality model.Quality `json:"quality,omitempty"`
 	// The request's TargetQuality. Set for generator entries only.
 	TargetQuality  model.Quality `json:"targetQuality,omitempty"`
@@ -55,6 +55,9 @@ type EntryFields struct {
 	Reason         string  `json:"reason,omitempty"`
 	// The request's Tag; a manual rating inherits the rated generation's.
 	Tag string `json:"tag"`
+	// The generation whose automatic rating this reviewer's verdict set. Only
+	// the winning reviewer's automatic entry carries it.
+	ReviewedGenerationID string `json:"reviewedGenerationId,omitempty"`
 }
 
 // Entry is a validated history record. Its zero value is never valid.
