@@ -73,10 +73,12 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 		fail(fmt.Sprintf("%s: %v", path, err))
 	}
 	var maxCorrections int
-	if input.MaxCorrections != nil {
-		if *input.MaxCorrections < 1 {
-			fail(fmt.Sprintf("%s: maxCorrections must be at least 1 when present, got %d", path, *input.MaxCorrections))
-		}
+	switch {
+	case input.OutputValidationRules != "" && input.MaxCorrections == nil:
+		fail(fmt.Sprintf("%s: maxCorrections is required when outputValidationRules is set", path))
+	case input.OutputValidationRules == "" && input.MaxCorrections != nil:
+		fail(fmt.Sprintf("%s: maxCorrections must be absent when outputValidationRules is empty", path))
+	case input.MaxCorrections != nil:
 		maxCorrections = *input.MaxCorrections
 	}
 	return model.TextGenerationRequirements{

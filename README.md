@@ -38,7 +38,8 @@ Each call goes through these steps:
    request sends the original prompt, the previous reply, and the review
    notes, and asks the model to address the notes. The correction is then
    reviewed again. Each correction sends only the latest reply and its
-   notes. `MaxCorrections` caps the corrections; 0 means 2, a negative
+   notes. `MaxCorrections` caps the corrections and is required with
+   rules: 0 reviews the first output without correcting it, a negative
    value panics, and it must be 0 without rules.
 4. **Track.** Every generation's quality is recorded against the model
    that produced it: the automatic review's rating, `unusable` for
@@ -131,8 +132,7 @@ The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
 `reviewToleranceThreshold` (required with rules, absent without),
 `targetQuality`, and optionally `timeoutSeconds`, `maxOutputTokens`, and
-`maxCorrections` (only with rules; absent means 2, and a present value
-must be at least 1). `--paid` switches from
+`maxCorrections` (required with rules, 0 or more; absent without). `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
 `--tag=...`. History goes to
