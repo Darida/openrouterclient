@@ -13,6 +13,7 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/chat"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 )
 
 // A model or provider that can't serve this particular request answers with
@@ -78,15 +79,15 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 	if resp.StatusCode != http.StatusOK {
 		providerErr := chat.ParseErrorBody(body)
 		if refusalStatuses[resp.StatusCode] {
-			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, body)), false, false
+			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: body saved to %s", resp.StatusCode, replyfile.Save("refused", body))), false, false
 		}
 		if !retryableStatuses[resp.StatusCode] {
-			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
+			panic(fmt.Sprintf("engine: chat request returned HTTP %d: body saved to %s", resp.StatusCode, replyfile.Save("unexpected-status", body)))
 		}
 		return e.failed(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false, false
 	}
 	if generationID == "" {
-		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body: %s", body))
+		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body saved to %s", replyfile.Save("no-generation-id", body)))
 	}
 
 	return e.classifyOK(ctx, modelID, start, generationID, body, validate)
@@ -108,14 +109,14 @@ func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time
 	}
 	result = attempt{model: modelID, generationID: generationID, content: content, latency: time.Since(start)}
 	if err != nil {
-		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, err.Error()
+		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, fmt.Sprintf("%v — body saved to %s", err, replyfile.Save(generationID, body))
 		return result, false, false
 	}
 	result.outcome = history.OutcomeSuccess
 	return result, true, false
 }
 
-// refused keeps the full body as the reason, since an all-refused race is
+// refused names the saved body in the reason, since an all-refused race is
 // returned to the caller as its only evidence of what went wrong.
 func (e *Engine) refused(ctx context.Context, modelID, generationID string, start time.Time, reason string) attempt {
 	result := e.failed(ctx, modelID, generationID, start, reason)

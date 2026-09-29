@@ -69,6 +69,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `review`: holds the fixed review prompt and schema.
   - `quality`: ranks qualities and derives one from a review's note count.
   - `schema`: validates output against the requested JSON Schema.
+  - `replyfile`: saves raw replies to files so messages can name them.
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
@@ -98,7 +99,8 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   another attempt won, the request was servable, so the refusal is recorded
   against the model as `unusable`, with or without a generation id. If
   nothing won, the refusal is no evidence about any model: it is returned
-  in `AttemptsExhaustedError` with the full raw body and not recorded.
+  in `AttemptsExhaustedError`, naming the file with its full raw body (see
+  Failure policy), and not recorded.
 - **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
   a request, so an upstream failure can arrive as an `error` object inside
   a 200 body as well as with a transient non-200 status. A 200 whose body
@@ -161,7 +163,8 @@ This library never falls back and never swallows a failure.
 
 - `GenerateText` returns an error in exactly two cases: every allowed
   attempt failed, timed out, or fell below `TargetQuality`
-  (`*AttemptsExhaustedError`, which carries every attempt's raw reason; its
+  (`*AttemptsExhaustedError`, which carries every attempt's reason, and
+  for each output the review rejected, that output and its review; its
   message says the review rejected the output if any attempt fell below
   `TargetQuality`, and that all attempts failed otherwise), or
   the caller's context ended (`ctx.Err()`). Attempts cut short by the
@@ -171,7 +174,12 @@ This library never falls back and never swallows a failure.
   model failure, plus refusals (400, 404, 422) when another attempt in the
   same race won. Any other non-200 status means the request or the key is
   wrong, so it panics.
-- Anything unexpected panics, with the full raw body in the message. That
+- Log lines, error messages, and panics never quote a raw OpenRouter reply.
+  Each reply they refer to is saved in full to its own file under
+  `openrouterclient/` in the system temp directory (`$TMPDIR`, else `/tmp`),
+  and the message names that file. That covers invalid output, refusals, and
+  for a rejected output, both the output and its review.
+- Anything unexpected panics, naming the file with the full raw body. That
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context

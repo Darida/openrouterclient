@@ -18,10 +18,13 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/quality"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/internal/review"
 	"github.com/Darida/openrouterclient/src/internal/schema"
 	"github.com/Darida/openrouterclient/src/model"
 )
+
+const nearestExclusionShown = 3
 
 type Engine struct {
 	settings Settings
@@ -71,7 +74,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		if !quality.Below(result.quality, req.TargetQuality) {
 			return result.generatedText(), nil
 		}
-		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: result.gen.model, GenerationID: result.gen.generationID, Quality: result.quality, Reason: review.FormatNotes(result.verdict.Notes), ReviewGenerationID: result.rev.generationID})
+		failures = append(failures, result.rejection(replyfile.Save(result.gen.generationID, result.gen.content), replyfile.Save(result.rev.generationID, result.rev.content)))
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
@@ -285,10 +288,22 @@ func maxOutputTokens(req model.TextGenerationRequirements) int {
 
 func (e *Engine) excludedModels(tag string) []string {
 	exclusions := e.history.Exclusions(time.Now(), tag)
-	if len(exclusions.BelowCap) > 0 || len(exclusions.Excluded) > 0 {
-		e.logger.Info("openrouter: model failures", "tag", tag, "excluded", strings.Join(exclusions.Excluded, ", "), "belowCap", strings.Join(exclusions.BelowCap, ", "))
+	if len(exclusions.Excluded) > 0 {
+		e.logger.Info("openrouter: excluded models", "tag", tag, "count", len(exclusions.Excluded), "models", strings.Join(exclusions.Excluded, ", "))
+	}
+	if len(exclusions.BelowCap) > 0 {
+		nearest := exclusions.BelowCap[:min(nearestExclusionShown, len(exclusions.BelowCap))]
+		e.logger.Info("openrouter: models nearest exclusion", "tag", tag, "total", len(exclusions.BelowCap), "top", formatFailureCounts(nearest))
 	}
 	return exclusions.Excluded
+}
+
+func formatFailureCounts(counts []history.FailureCounts) string {
+	parts := make([]string, len(counts))
+	for i, c := range counts {
+		parts[i] = fmt.Sprintf("%s (today=%g week=%g month=%g lifetime=%g)", c.Model, c.Today, c.Week, c.Month, c.Lifetime)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func validateRequirements(req model.TextGenerationRequirements) {

@@ -107,3 +107,20 @@ func TestComputeExclusions_whenEightFailuresTodayUnderOtherTag_thenExcluded(t *t
 		t.Fatalf("excluded = %v; 8 other-tag failures weigh 4, over the cap of 3", got.Excluded)
 	}
 }
+
+func TestComputeExclusions_whenBelowCap_thenMostFailuresTodayFirst(t *testing.T) {
+	// Arrange
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	failure := func(modelID string) Entry {
+		return NewEntry(EntryFields{Timestamp: now, Model: modelID, GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: "t"})
+	}
+	entries := []Entry{failure("a"), failure("b"), failure("b")}
+
+	// Act
+	got := computeExclusions(entries, now, "t")
+
+	// Assert
+	if len(got.BelowCap) != 2 || got.BelowCap[0].Model != "b" {
+		t.Fatalf("below cap = %+v, want b (2 today) before a (1 today)", got.BelowCap)
+	}
+}

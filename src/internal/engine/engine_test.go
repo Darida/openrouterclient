@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -112,6 +113,8 @@ func reply(w http.ResponseWriter, generationID, modelID, content string) {
 func noNotes(int) string { return `{"notes":[],"totalBadScore":0}` }
 
 func newEngine(t *testing.T, settings Settings) (*Engine, string) {
+	// Keeps saved replies out of the real system temp directory.
+	t.Setenv("TMPDIR", t.TempDir())
 	path := filepath.Join(t.TempDir(), "history.json")
 	engine := New(settings, "key", history.Open(path), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(engine.Close)
@@ -969,7 +972,134 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewG
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	if !errors.As(err, &exhausted) || exhausted.Attempts[0].ReviewGenerationID != "gen-review-1" {
+	if !errors.As(err, &exhausted) || exhausted.Attempts[0].Review.GenerationID != "gen-review-1" {
 		t.Fatalf("err = %v; want the first below-target attempt to name gen-review-1", err)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesRejectedContent(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || string(exhausted.Attempts[0].Content) != `{"fruit":"apple"}` {
+		t.Fatalf("err = %v; want the first below-target attempt to carry the rejected output", err)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewVerdict(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	want := model.ReviewVerdict{Notes: []model.ReviewNote{{Rule: "1", Text: "Not yellow."}}, TotalBadScore: 1}
+	if !errors.As(err, &exhausted) || !reflect.DeepEqual(exhausted.Attempts[0].Review.Verdict, want) {
+		t.Fatalf("err = %v; want the first below-target attempt to carry the rejecting verdict", err)
+	}
+}
+
+func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"status": "LGTM"`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || strings.Contains(exhausted.Attempts[0].Reason, "LGTM") {
+		t.Fatalf("err = %v; want a reason that names the saved reply instead of quoting it", err)
+	}
+}
+
+func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingReply(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"status": "LGTM"`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
+	}
+	_, path, _ := strings.Cut(exhausted.Attempts[0].Reason, "body saved to ")
+	saved, readErr := os.ReadFile(path)
+	if readErr != nil || !strings.Contains(string(saved), "LGTM") {
+		t.Fatalf("reason %q names %q, which holds %q (%v); want the raw reply", exhausted.Attempts[0].Reason, path, saved, readErr)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRejectedOutput(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
+	}
+	_, rest, _ := strings.Cut(exhausted.Attempts[0].Reason, "rejected output saved to ")
+	path, _, _ := strings.Cut(rest, ";")
+	saved, readErr := os.ReadFile(path)
+	if readErr != nil || string(saved) != `{"fruit":"apple"}` {
+		t.Fatalf("reason %q names %q, which holds %q (%v); want the rejected output", exhausted.Attempts[0].Reason, path, saved, readErr)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingReview(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
+	}
+	_, path, _ := strings.Cut(exhausted.Attempts[0].Reason, "review saved to ")
+	saved, readErr := os.ReadFile(path)
+	if readErr != nil || !strings.Contains(string(saved), "Not yellow.") {
+		t.Fatalf("reason %q names %q, which holds %q (%v); want the review", exhausted.Attempts[0].Reason, path, saved, readErr)
 	}
 }

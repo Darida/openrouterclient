@@ -51,7 +51,8 @@ This library exists to fail loudly. Never add a retry, default, fallback
 model, placeholder value (`"unknown"`), swallowed error, or
 best-effort-and-continue path that `README.md` doesn't already describe.
 If an OpenRouter response doesn't match what the code expects, crash with
-the full raw body in the message. An unexpected shape is a bug to research
+the full raw body saved to a file that the message names. Never quote a
+raw reply in a log, error, or panic message. An unexpected shape is a bug to research
 and fix, not a case to paper over.
 
 ## Tooling gaps never drive design

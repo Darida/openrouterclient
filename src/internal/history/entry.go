@@ -91,6 +91,12 @@ func (e *Entry) UnmarshalJSON(raw []byte) error {
 
 type Exclusions struct {
 	Excluded []string
-	// Models with failures still under every cap, formatted with their counts for logging.
-	BelowCap []string
+	// Models with failures still under every cap, most failures today first.
+	BelowCap []FailureCounts
+}
+
+// FailureCounts holds a model's tag-weighted failures per window.
+type FailureCounts struct {
+	Model                        string
+	Today, Week, Month, Lifetime float64
 }
