@@ -38,6 +38,7 @@ func (p *ProviderError) Error() string {
 	return fmt.Sprintf("provider error %d: %s", p.Code, detail)
 }
 
+func SystemMessage(content string) Message    { return Message{Role: "system", Content: content} }
 func UserMessage(content string) Message      { return Message{Role: "user", Content: content} }
 func AssistantMessage(content string) Message { return Message{Role: "assistant", Content: content} }
 
