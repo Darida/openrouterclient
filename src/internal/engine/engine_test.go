@@ -110,7 +110,7 @@ func reply(w http.ResponseWriter, generationID, modelID, content string) {
 	w.Write(body)
 }
 
-func noNotes(int) string { return `{"notes":[],"totalBadScore":0}` }
+func noViolations(int) string { return `{"violations":[],"totalBadScore":0}` }
 
 func newEngine(t *testing.T, settings Settings) (*Engine, string) {
 	// Keeps saved replies out of the real system temp directory.
@@ -133,13 +133,13 @@ func readHistory(t *testing.T, path string) []history.Entry {
 	return entries
 }
 
-func TestEngineGenerateText_whenReviewHasNoNotes_thenReturnsHighQuality(t *testing.T) {
+func TestEngineGenerateText_whenReviewHasNoViolations_thenReturnsHighQuality(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -153,7 +153,7 @@ func TestEngineGenerateText_whenReviewHasNoNotes_thenReturnsHighQuality(t *testi
 	}
 }
 
-func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesNotes(t *testing.T) {
+func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesViolations(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -161,9 +161,9 @@ func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesNotes(t *
 		},
 		review: func(n int) string {
 			if n == 1 {
-				return `{"notes":[{"rule":"1","text":"Apples are not yellow."}],"totalBadScore":1}`
+				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}`
 			}
-			return `{"notes":[],"totalBadScore":0}`
+			return `{"violations":[],"totalBadScore":0}`
 		},
 	}
 	_, settings := fake.serve(t)
@@ -174,7 +174,7 @@ func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesNotes(t *
 
 	// Assert
 	if err != nil || len(fake.generations) != 2 || !strings.Contains(fake.generations[1].Messages[2].Content, "Apples are not yellow.") {
-		t.Fatalf("err=%v generations=%+v; want a second generation carrying the review note", err, fake.generations)
+		t.Fatalf("err=%v generations=%+v; want a second generation carrying the review violation", err, fake.generations)
 	}
 }
 
@@ -183,7 +183,7 @@ func alwaysBelowTarget() *fakeOpenRouter {
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "writer/free", `{"fruit":"apple"}`)
 		},
-		review: func(int) string { return `{"notes":[{"rule":"1","text":"Not yellow."}],"totalBadScore":1}` },
+		review: func(int) string { return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}` },
 	}
 }
 
@@ -286,7 +286,7 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedM
 			}
 			reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
@@ -317,7 +317,7 @@ func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t 
 			}
 			reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
@@ -344,7 +344,7 @@ func TestEngineRate_whenGenerationReturned_thenRecordsManualRating(t *testing.T)
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -373,7 +373,7 @@ func overloadedFirst(w http.ResponseWriter, r *http.Request, n int) {
 
 func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResendsAndWins(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: overloadedFirst, review: noNotes}
+	fake := &fakeOpenRouter{generate: overloadedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	settings.MaxAttempts = 1
 	engine, _ := newEngine(t, settings)
@@ -389,7 +389,7 @@ func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResends
 
 func TestEngineGenerateText_whenProviderRejectsIn200Body_thenRecordsNothingForIt(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: overloadedFirst, review: noNotes}
+	fake := &fakeOpenRouter{generate: overloadedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
 	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
@@ -420,7 +420,7 @@ func rateLimitedFirst(w http.ResponseWriter, r *http.Request, n int) {
 
 func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstPickedModel(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noNotes}
+	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
 	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
@@ -459,7 +459,7 @@ func alwaysRefused(w http.ResponseWriter, r *http.Request, n int) { refuse(w) }
 
 func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRefusalAgainstPickedModel(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: refusedFirst, review: noNotes}
+	fake := &fakeOpenRouter{generate: refusedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
 	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
@@ -481,7 +481,7 @@ func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRef
 
 func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: alwaysRefused, review: noNotes}
+	fake := &fakeOpenRouter{generate: alwaysRefused, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
@@ -502,7 +502,7 @@ func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t
 
 func TestEngineGenerateText_whenEveryAttemptRefused_thenRecordsNoRefusal(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{generate: alwaysRefused, review: noNotes}
+	fake := &fakeOpenRouter{generate: alwaysRefused, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
 	if _, err := engine.GenerateText(context.Background(), requirements); err == nil {
@@ -525,7 +525,7 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *tes
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: func(int) string { t.Error("review requested"); return `{"notes":[],"totalBadScore":0}` },
+		review: func(int) string { t.Error("review requested"); return `{"violations":[],"totalBadScore":0}` },
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -549,7 +549,7 @@ func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"vegetable":"carrot"}`)
 		},
-		review: func(int) string { t.Error("review requested"); return `{"notes":[],"totalBadScore":0}` },
+		review: func(int) string { t.Error("review requested"); return `{"violations":[],"totalBadScore":0}` },
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -570,7 +570,7 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
@@ -601,7 +601,7 @@ func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testin
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "cheap/model", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -623,7 +623,7 @@ func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "cheap/model", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -645,7 +645,7 @@ func TestEngineGenerateText_whenCheapestModelExcluded_thenAsksNextCheapest(t *te
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -668,7 +668,7 @@ func TestEngineGenerateText_whenCheapestModelExcluded_thenReviewerNeverAsksIt(t 
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -691,7 +691,7 @@ func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenPanics(t *testing.
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -715,7 +715,7 @@ func TestEngineGenerateText_whenExcludedModelInOtherTier_thenPanics(t *testing.T
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -739,7 +739,7 @@ func TestEngineGenerateText_whenEveryCandidateExcluded_thenPanics(t *testing.T) 
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -797,7 +797,7 @@ func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testi
 			reply(w, "gen-1", "writer/free", `{"fruit":"lemon"}`)
 		},
 		review: func(int) string {
-			return `{"notes":[{"rule":"1","text":"Lemons are pale."}],"totalBadScore":3}`
+			return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Lemons are pale.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":3}`
 		},
 	}
 	_, settings := fake.serve(t)
@@ -839,9 +839,9 @@ func correctedOnce(t *testing.T) *fakeOpenRouter {
 		},
 		review: func(n int) string {
 			if n == 1 {
-				return `{"notes":[{"rule":"1","text":"Apples are not yellow."}],"totalBadScore":1}`
+				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}`
 			}
-			return `{"notes":[],"totalBadScore":0}`
+			return `{"violations":[],"totalBadScore":0}`
 		},
 	}
 	_, settings := fake.serve(t)
@@ -928,7 +928,7 @@ func TestEngineGenerateText_whenCorrecting_thenGeneratorContinuesItsOwnConversat
 
 	// Assert
 	if strings.Join(roles(correction), ",") != "user,assistant,user" || correction.Messages[0].Content != requirements.Prompt || correction.Messages[1].Content != `{"fruit":"apple-1"}` {
-		t.Fatalf("correction messages %+v; want the prompt, the first output as assistant, then the notes", correction.Messages)
+		t.Fatalf("correction messages %+v; want the prompt, the first output as assistant, then the violations", correction.Messages)
 	}
 }
 
@@ -938,7 +938,7 @@ func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGenerat
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
@@ -1008,7 +1008,7 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewV
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	want := model.ReviewVerdict{Notes: []model.ReviewNote{{Rule: "1", Text: "Not yellow."}}, TotalBadScore: 1}
+	want := model.ReviewVerdict{Violations: []model.ReviewViolation{{Rule: "1", Evidence: "apple", Explanation: "Not yellow.", RecommendedAction: "Use a yellow fruit."}}, TotalBadScore: 1}
 	if !errors.As(err, &exhausted) || !reflect.DeepEqual(exhausted.Attempts[0].Review.Verdict, want) {
 		t.Fatalf("err = %v; want the first below-target attempt to carry the rejecting verdict", err)
 	}
@@ -1020,7 +1020,7 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *tes
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"status": "LGTM"`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
@@ -1041,7 +1041,7 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingR
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "sloppy/free", `{"status": "LGTM"`)
 		},
-		review: noNotes,
+		review: noViolations,
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)

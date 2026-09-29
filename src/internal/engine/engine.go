@@ -51,7 +51,7 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 
 // GenerateText generates, reviews, and corrects until a result meets
 // TargetQuality or the request's corrections run out. Every correction
-// resends the original prompt, the latest reply, and its review notes.
+// resends the original prompt, the latest reply, and its review violations.
 func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequirements) (model.GeneratedText, error) {
 	validateRequirements(req)
 	outputValidator := schema.Compile(req.OutputSchema.Name, req.OutputSchema.Schema)
@@ -75,7 +75,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 			return result.generatedText(), nil
 		}
 		failures = append(failures, result.rejection(replyfile.Save(result.gen.generationID, result.gen.content), replyfile.Save(result.rev.generationID, result.rev.content)))
-		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
+		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Violations))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
 }
@@ -123,8 +123,8 @@ func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationR
 
 	verdict := review.Parse(rev.content)
 	rated := quality.FromBadScore(verdict.TotalBadScore, req.ReviewToleranceThreshold)
-	e.recordGeneration(gen, req, rated, review.FormatNotes(verdict.Notes))
-	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes), "badScore", verdict.TotalBadScore, "threshold", req.ReviewToleranceThreshold)
+	e.recordGeneration(gen, req, rated, review.FormatViolations(verdict.Violations))
+	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "violations", len(verdict.Violations), "badScore", verdict.TotalBadScore, "threshold", req.ReviewToleranceThreshold)
 	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, failures, true
 }
 
