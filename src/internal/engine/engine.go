@@ -227,19 +227,14 @@ func entryFields(a attempt, label raceLabel, q model.Quality, reason string) his
 }
 
 // candidateModels drops models whose context can't hold the request, then
-// models excluded by history or by the caller, then for the paid tier keeps
-// only the cheapest by estimated cost. It panics when a caller exclusion
-// names no candidate of tier, or when nothing is left to ask.
+// excluded models, then for the paid tier keeps only the cheapest by
+// estimated cost. It panics when nothing is left to ask.
 func (e *Engine) candidateModels(tier model.ModelTier, tag string, callerExcluded []string, promptTokens, maxTokens int) []string {
 	available := e.catalog.Candidates(tier)
 	if len(available) == 0 {
 		panic(fmt.Sprintf("engine: OpenRouter's catalog lists no %s structured-output models", tier))
 	}
-	for _, id := range callerExcluded {
-		if !slices.ContainsFunc(available, func(m catalog.Model) bool { return m.ID == id }) {
-			panic(fmt.Sprintf("engine: ExcludedModels names %q, which is not a %s structured-output model in OpenRouter's catalog", id, tier))
-		}
-	}
+	validateExcludedModels(callerExcluded, available, tier)
 	excluded := slices.Concat(e.excludedModels(tag), callerExcluded)
 	requestTokens := promptTokens + maxTokens
 	var fitting []catalog.Model
@@ -349,4 +344,12 @@ func rolePrefix(role history.Role) string {
 
 func generatorLabel(req model.TextGenerationRequirements) raceLabel {
 	return raceLabel{role: history.RoleGenerator, target: req.TargetQuality, tag: req.Tag, timeout: req.Timeout}
+}
+
+func validateExcludedModels(excluded []string, available []catalog.Model, tier model.ModelTier) {
+	for _, id := range excluded {
+		if !slices.ContainsFunc(available, func(m catalog.Model) bool { return m.ID == id }) {
+			panic(fmt.Sprintf("engine: ExcludedModels names %q, which is not a %s structured-output model in OpenRouter's catalog", id, tier))
+		}
+	}
 }
