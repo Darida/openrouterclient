@@ -25,21 +25,26 @@ Each call goes through these steps:
    holds the caller's prompt as the junior's task, and a second holds the
    generated output. Each rule may
    state a bad score for violating it; a rule that states none counts 1.
-   The reply must match the fixed `ReviewVerdict` schema: a list of notes
-   plus the total bad score of the violated rules. A total of 0 is high, up
+   The reply must match the fixed `ReviewVerdict` schema: a list of
+   violations plus the total bad score of the violated rules. The reviewer
+   reports only violations of the listed rules, never suggestions or
+   observations, and only ones it can quote. Each offending instance is its
+   own violation, carrying the rule, a verbatim evidence excerpt of about
+   five words, an explanation, and a recommended action. The total counts
+   each violated rule once. A total of 0 is high, up
    to the request's `ReviewToleranceThreshold` is medium, and above it is
    low. A total that is negative, or that disagrees with whether there are
-   notes, counts as reviewer output that fails the schema. With empty
+   violations, counts as reviewer output that fails the schema. With empty
    `OutputValidationRules`, review and correction are skipped and the first
    schema-valid output is returned, recorded in history as high.
    `ReviewToleranceThreshold` is required (at least 1) with rules and must
    be 0 without them. Output that fails the schema
    is a failed attempt and never reaches review.
 3. **Correct.** If that quality is below `TargetQuality`, a correction
-   request sends the original prompt, the previous reply, and the review
-   notes, and asks the model to address the notes. The correction is then
+   request sends the original prompt, the previous reply, and the review's
+   violations, and asks the model to fix them. The correction is then
    reviewed again. Each correction sends only the latest reply and its
-   notes. `MaxCorrections` caps the corrections and is required with
+   violations. `MaxCorrections` caps the corrections and is required with
    rules: 0 reviews the first output without correcting it, a negative
    value panics, and it must be 0 without rules.
 4. **Track.** Every generation's quality is recorded against the model
@@ -67,7 +72,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `cost`: estimates a request's cost per model and keeps the cheapest.
   - `history`: stores outcomes and computes exclusions.
   - `review`: holds the fixed review prompt and schema.
-  - `quality`: ranks qualities and derives one from a review's note count.
+  - `quality`: ranks qualities and derives one from a review's total bad score.
   - `schema`: validates output against the requested JSON Schema.
   - `replyfile`: saves raw replies to files so messages can name them.
   - `engine`: orchestrates the generate, review, and correct loop.

@@ -16,21 +16,23 @@ var verdictSchema = model.JSONSchema{
 	Schema: json.RawMessage(`{
   "type": "object",
   "properties": {
-    "notes": {
+    "violations": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "rule": {"type": "string", "description": "The violated rule, quoted or named as it appears in the rules."},
-          "text": {"type": "string", "description": "An actionable description of the violation."}
+          "evidence": {"type": "string", "description": "A verbatim excerpt of about five words that demonstrates the violation: from the output, or from the task for a missing part."},
+          "explanation": {"type": "string", "description": "Why the evidence breaks the rule."},
+          "recommendedAction": {"type": "string", "description": "The specific change that fixes this violation."}
         },
-        "required": ["rule", "text"],
+        "required": ["rule", "evidence", "explanation", "recommendedAction"],
         "additionalProperties": false
       }
     },
-    "totalBadScore": {"type": "integer", "description": "The sum of the bad scores of the rules the notes name, one per note."}
+    "totalBadScore": {"type": "integer", "description": "The sum of the bad scores of the rules the violations name, counting each rule once."}
   },
-  "required": ["notes", "totalBadScore"],
+  "required": ["violations", "totalBadScore"],
   "additionalProperties": false
 }`),
 }
@@ -39,15 +41,21 @@ var verdictValidator = schema.Compile(verdictSchema.Name, verdictSchema.Schema)
 
 // The reviewer is framed as a senior checking someone else's work: shown the
 // output as its own assistant turn, a model defends it instead of checking it.
-const reviewInstructions = `You are a senior reviewer with twenty years of experience checking junior work before it ships. You are meticulous, skeptical, and fair: you assume nothing is right until you have checked it against the task and the output's actual text. You don't rewrite the work, and you don't praise it. You find what's wrong and say exactly how to fix it.
+const reviewInstructions = `You are a senior reviewer with twenty years of experience checking junior work before it ships. You are meticulous, skeptical, and exact: you assume nothing is right until you have checked it against the task and the output's actual text. You don't rewrite the work, you don't praise it, and you don't comment on it. Your only job is to report rule violations.
 
 How you review:
 - Read the task first, then the junior's output. Judge the output's actual text, never what the junior probably meant.
-- Go through every rule below, one by one. For a rule about coverage, walk through the task's source material section by section and confirm each section appears in the output.
-- When in doubt whether a rule is broken, report it. A false alarm costs less than a missed error.
-- Write one note per violated rule. In it, "rule" names the rule as written below, and "text" quotes every offending passage (or names every missing part) and says how to fix it.
-- Each rule may state a bad score for violating it; a rule that states none has a bad score of 1. Set "totalBadScore" to the sum of the bad scores of the rules your notes name, counting each rule once.
-- If the output violates no rule, return an empty "notes" array and a "totalBadScore" of 0.
+- Go through every rule below, one by one, and check the whole output against it. For a rule about coverage, walk through the task's source material section by section and confirm each section appears in the output.
+- Report ONLY violations of the rules below. Never report style preferences, possible improvements, general observations, or anything no rule covers, however much you'd like to.
+- Report a violation only when you can point to it. If you can't quote evidence that demonstrates it, it is not a violation.
+- Report each offending instance as its own violation. A rule broken in three places is three violations.
+- In each violation:
+  - "rule" names the rule as written below.
+  - "evidence" is a verbatim excerpt of about five words that demonstrates the problem. Quote the output; for something missing, quote the task where the missing part is required.
+  - "explanation" says in one or two sentences why the evidence breaks the rule.
+  - "recommendedAction" says exactly what to change to fix this instance.
+- Each rule may state a bad score for violating it; a rule that states none has a bad score of 1. Set "totalBadScore" to the sum of the bad scores of the rules your violations name, counting each rule once however many violations name it.
+- If the output violates no rule, return an empty "violations" array and a "totalBadScore" of 0.
 
 Rules:
 `
@@ -56,15 +64,15 @@ const taskHeading = "The task the junior was given:\n\n"
 
 const outputHeading = "The junior's output:\n\n"
 
-const correctionInstructions = `A review of your previous reply found the issues below.
-Reply again to the original request with a corrected answer that addresses every issue, in the same output format.
+const correctionInstructions = `A review of your previous reply found the rule violations below.
+Reply again to the original request with a corrected answer that fixes every violation, in the same output format.
 
-Issues:
+Violations:
 `
 
 func Schema() model.JSONSchema { return verdictSchema }
 
-// Validate also rejects a total that contradicts the notes, which strict
+// Validate also rejects a total that contradicts the violations, which strict
 // mode can't express, so the reviewer is rated like any off-schema output.
 func Validate(content json.RawMessage) error {
 	if err := verdictValidator.Validate(content); err != nil {
@@ -74,10 +82,10 @@ func Validate(content json.RawMessage) error {
 	switch {
 	case verdict.TotalBadScore < 0:
 		return fmt.Errorf("review: totalBadScore %d is negative", verdict.TotalBadScore)
-	case len(verdict.Notes) == 0 && verdict.TotalBadScore != 0:
-		return fmt.Errorf("review: totalBadScore %d with no notes", verdict.TotalBadScore)
-	case len(verdict.Notes) > 0 && verdict.TotalBadScore == 0:
-		return fmt.Errorf("review: totalBadScore 0 with %d notes", len(verdict.Notes))
+	case len(verdict.Violations) == 0 && verdict.TotalBadScore != 0:
+		return fmt.Errorf("review: totalBadScore %d with no violations", verdict.TotalBadScore)
+	case len(verdict.Violations) > 0 && verdict.TotalBadScore == 0:
+		return fmt.Errorf("review: totalBadScore 0 with %d violations", len(verdict.Violations))
 	}
 	return nil
 }
@@ -92,14 +100,14 @@ func Messages(task string, output json.RawMessage, rules string) []chat.Message 
 	}
 }
 
-func CorrectionPrompt(notes []model.ReviewNote) string {
-	return correctionInstructions + FormatNotes(notes)
+func CorrectionPrompt(violations []model.ReviewViolation) string {
+	return correctionInstructions + FormatViolations(violations)
 }
 
-func FormatNotes(notes []model.ReviewNote) string {
-	lines := make([]string, len(notes))
-	for i, n := range notes {
-		lines[i] = fmt.Sprintf("- [%s] %s", n.Rule, n.Text)
+func FormatViolations(violations []model.ReviewViolation) string {
+	lines := make([]string, len(violations))
+	for i, v := range violations {
+		lines[i] = fmt.Sprintf("- [%s] %q: %s Fix: %s", v.Rule, v.Evidence, v.Explanation, v.RecommendedAction)
 	}
 	return strings.Join(lines, "\n")
 }

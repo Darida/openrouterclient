@@ -29,7 +29,7 @@ type TextGenerationRequirements struct {
 	// OutputValidationRules is set; must be 0 when it is empty.
 	ReviewToleranceThreshold int
 	// How many corrections may follow a review that rates the output below
-	// TargetQuality, each one regenerated with the review's notes and reviewed
+	// TargetQuality, each one regenerated with the review's violations and reviewed
 	// again. Required when OutputValidationRules is set: 0 reviews the first
 	// output without correcting it; negative panics. Must be 0 when
 	// OutputValidationRules is empty.

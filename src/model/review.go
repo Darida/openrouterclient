@@ -2,18 +2,25 @@ package model
 
 // ReviewVerdict is the fixed output schema of every automatic review, whatever the caller's rules.
 type ReviewVerdict struct {
-	// One entry per violated rule.
-	Notes []ReviewNote `json:"notes"`
-	// The reviewer's sum of the violated rules' bad scores. A rule in
+	// One entry per offending instance; a rule broken in several places
+	// appears once per place.
+	Violations []ReviewViolation `json:"violations"`
+	// The reviewer's sum of the violated rules' bad scores, counting each
+	// rule once however many violations name it. A rule in
 	// OutputValidationRules that states no bad score counts 1.
 	TotalBadScore int `json:"totalBadScore"`
 }
 
-type ReviewNote struct {
+type ReviewViolation struct {
 	// The rule violated, quoted or named as it appears in OutputValidationRules.
 	Rule string `json:"rule"`
-	// An actionable description of the violation.
-	Text string `json:"text"`
+	// A short excerpt, about five words, that demonstrates the violation: from
+	// the output, or from the task for something the output leaves out.
+	Evidence string `json:"evidence"`
+	// Why the evidence breaks the rule.
+	Explanation string `json:"explanation"`
+	// The specific change that would fix this violation.
+	RecommendedAction string `json:"recommendedAction"`
 }
 
 // Review is one completed automatic review. The reviewer is a separate
