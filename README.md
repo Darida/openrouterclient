@@ -38,7 +38,7 @@ Each call goes through these steps:
    request sends the original prompt, the previous reply, and the review
    notes, and asks the model to address the notes. The correction is then
    reviewed again. Each correction sends only the latest reply and its
-   notes. `MaxReviewRetries` caps the corrections; 0 means 2, a negative
+   notes. `MaxCorrections` caps the corrections; 0 means 2, a negative
    value panics, and it must be 0 without rules.
 4. **Track.** Every generation's quality is recorded against the model
    that produced it: the automatic review's rating, `unusable` for
@@ -107,7 +107,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   non-200 status counts as a failure of the attempt's model. Requests go
   out with provider fallbacks disabled, so a failing provider fails that
   attempt instead of being silently retried elsewhere.
-- **Correction rounds.** There are at most 1 + `MaxReviewRetries` rounds,
+- **Correction rounds.** There are at most 1 + `MaxCorrections` rounds,
   counting the first generation. Failed or timed-out review attempts are recorded against the
   reviewer's model. Output that doesn't match the schema, whether from the
   generator or the reviewer, is rated `unusable`.
@@ -131,7 +131,7 @@ The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
 `reviewToleranceThreshold` (required with rules, absent without),
 `targetQuality`, and optionally `timeoutSeconds`, `maxOutputTokens`, and
-`maxReviewRetries` (only with rules; absent means 2, and a present value
+`maxCorrections` (only with rules; absent means 2, and a present value
 must be at least 1). `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as

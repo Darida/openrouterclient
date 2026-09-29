@@ -188,11 +188,11 @@ func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *t
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneRetry := requirements
-	oneRetry.MaxReviewRetries = 1
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneRetry)
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -201,16 +201,16 @@ func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *t
 	}
 }
 
-func TestEngineGenerateText_whenMaxReviewRetriesSet_thenGeneratesOncePlusRetries(t *testing.T) {
+func TestEngineGenerateText_whenMaxCorrectionsSet_thenGeneratesOncePlusCorrections(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	threeRetries := requirements
-	threeRetries.MaxReviewRetries = 3
+	threeCorrections := requirements
+	threeCorrections.MaxCorrections = 3
 
 	// Act
-	engine.GenerateText(context.Background(), threeRetries)
+	engine.GenerateText(context.Background(), threeCorrections)
 
 	// Assert
 	if len(fake.generations) != 4 {
@@ -218,7 +218,7 @@ func TestEngineGenerateText_whenMaxReviewRetriesSet_thenGeneratesOncePlusRetries
 	}
 }
 
-func TestEngineGenerateText_whenMaxReviewRetriesZero_thenUsesDefault(t *testing.T) {
+func TestEngineGenerateText_whenMaxCorrectionsZero_thenUsesDefault(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
@@ -228,15 +228,15 @@ func TestEngineGenerateText_whenMaxReviewRetriesZero_thenUsesDefault(t *testing.
 	engine.GenerateText(context.Background(), requirements)
 
 	// Assert
-	if len(fake.generations) != 1+model.DefaultMaxReviewRetries {
-		t.Fatalf("generations = %d; want %d", len(fake.generations), 1+model.DefaultMaxReviewRetries)
+	if len(fake.generations) != 1+model.DefaultMaxCorrections {
+		t.Fatalf("generations = %d; want %d", len(fake.generations), 1+model.DefaultMaxCorrections)
 	}
 }
 
-func TestEngineValidateRequirements_whenMaxReviewRetriesNegative_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenMaxCorrectionsNegative_thenPanics(t *testing.T) {
 	// Arrange
 	negative := requirements
-	negative.MaxReviewRetries = -1
+	negative.MaxCorrections = -1
 
 	// Assert
 	defer func() {
@@ -249,12 +249,12 @@ func TestEngineValidateRequirements_whenMaxReviewRetriesNegative_thenPanics(t *t
 	validateRequirements(negative)
 }
 
-func TestEngineValidateRequirements_whenMaxReviewRetriesSetWithoutRules_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenMaxCorrectionsSetWithoutRules_thenPanics(t *testing.T) {
 	// Arrange
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
 	unreviewed.ReviewToleranceThreshold = 0
-	unreviewed.MaxReviewRetries = 1
+	unreviewed.MaxCorrections = 1
 
 	// Assert
 	defer func() {
@@ -837,11 +837,11 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewG
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneRetry := requirements
-	oneRetry.MaxReviewRetries = 1
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneRetry)
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
