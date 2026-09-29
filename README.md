@@ -129,8 +129,17 @@ key is required as `--key=...`, and the request's history tag as
 `~/.local/state/openrouterclient/history.json`, which is per user and per
 machine and never inside the repo.
 
-It prints the reviewed result as JSON on stdout and logs on stderr. If
-every attempt fails, it prints the failed attempts on stderr and exits 1.
+It prints the reviewed result as JSON on stdout and logs on stderr. The
+last log line holds a ready-to-paste `bin/rate.sh` command that rates the
+result low with the reason "human rejected output". If every attempt
+fails, it prints the failed attempts on stderr and exits 1.
+
+```sh
+bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
+```
+
+`bin/rate.sh` records a manual rating in the same history file. It needs
+no API key, since rating never contacts OpenRouter.
 
 ## Failure policy
 
