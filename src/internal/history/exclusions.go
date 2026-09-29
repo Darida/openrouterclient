@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/quality"
+	"github.com/Darida/openrouterclient/src/model"
 )
 
 // A failure recorded under another request's tag is weaker evidence about
@@ -80,6 +81,9 @@ func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 func countsAsFailure(f EntryFields) bool {
 	if f.Outcome != OutcomeSuccess || f.LatencySeconds >= f.TimeoutSeconds {
 		return true
+	}
+	if f.Role == RoleReviewer {
+		return f.Quality == model.QualityLow
 	}
 	return f.Quality != "" && f.TargetQuality != "" && quality.Below(f.Quality, f.TargetQuality)
 }

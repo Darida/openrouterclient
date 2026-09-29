@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -43,9 +44,20 @@ func main() {
 	// Stragglers from won races are still being recorded; exiting first would drop them.
 	client.Close()
 	if err != nil {
+		var exhausted *model.AttemptsExhaustedError
+		if errors.As(err, &exhausted) {
+			for _, a := range exhausted.Attempts {
+				if a.Outcome == model.OutcomeBelowTarget {
+					logger.Info("generate: to reject this review and unrate its generation, run", "generation", a.GenerationID, "command", rateLowCommand(*rateScript, a.ReviewGenerationID, "human rejected review"))
+				}
+			}
+		}
 		fail(err.Error())
 	}
-	logger.Info("generate: to rate this run as low quality, run", "command", rateLowCommand(*rateScript, result.GenerationID))
+	if result.Review != nil {
+		logger.Info("generate: to reject this review and unrate its generation, run", "command", rateLowCommand(*rateScript, result.Review.GenerationID, "human rejected review"))
+	}
+	logger.Info("generate: to rate this run as low quality, run", "command", rateLowCommand(*rateScript, result.GenerationID, "human rejected output"))
 }
 
 func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerationRequirements {
@@ -81,8 +93,8 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 	}
 }
 
-func rateLowCommand(rateScript, generationID string) string {
-	return strings.Join([]string{shellQuote(rateScript), shellQuote("--id=" + generationID), "--quality=low", shellQuote("--reason=human rejected output")}, " ")
+func rateLowCommand(rateScript, generationID, reason string) string {
+	return strings.Join([]string{shellQuote(rateScript), shellQuote("--id=" + generationID), "--quality=low", shellQuote("--reason=" + reason)}, " ")
 }
 
 func shellQuote(s string) string {

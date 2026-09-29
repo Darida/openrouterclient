@@ -21,6 +21,9 @@ type FailedAttempt struct {
 	Quality Quality
 	// The raw HTTP error body, transport error, or the review's notes.
 	Reason string
+	// Set only for OutcomeBelowTarget: the review's own generation. Rating it
+	// low clears the rating this review gave.
+	ReviewGenerationID string
 }
 
 type AttemptOutcome string

@@ -43,8 +43,11 @@ Each call goes through these steps:
 4. **Track.** Every generation's quality is recorded against the model
    that produced it: the automatic review's rating, `unusable` for
    failures, timeouts, and aborts, and any manual rating from
-   `Client.Rate`. Models that fail too often are excluded from later
-   calls.
+   `Client.Rate`. `Client.Rate` also takes a review's generation id. A
+   review rated low counts as a failure against the reviewer's model, and
+   the automatic rating it gave is cleared, so that generation no longer
+   counts for or against its model. Models that fail too often are
+   excluded from later calls.
 
 ## Layout
 
@@ -137,9 +140,11 @@ key is required as `--key=...`, and the request's history tag as
 machine and never inside the repo.
 
 It prints the reviewed result as JSON on stdout and logs on stderr. The
-last log line holds a ready-to-paste `bin/rate.sh` command that rates the
-result low with the reason "human rejected output". If every attempt
-fails, it prints the failed attempts on stderr and exits 1.
+last log lines hold ready-to-paste `bin/rate.sh` commands: one rates the
+result low with the reason "human rejected output", and one rates its
+review low with the reason "human rejected review". If every attempt
+fails, it logs a "human rejected review" command for each round's review
+and then prints the failed attempts on stderr and exits 1.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
@@ -180,6 +185,9 @@ outcome. Each object holds the timestamp, model, generation id (empty only
 for a `refused` outcome), whether
 the rating was automatic or manual, the quality, the request's target
 quality, tag, and timeout, latency, and a reason for failures and manual ratings.
+The winning reviewer's entry also names the generation it reviewed. Rating
+that reviewer low rewrites the reviewed generation's automatic entry in
+place, clearing its quality and noting why in its reason.
 Writes are serialized within the process and protected with a file lock
 across processes. A file with entries that lack a tag or timeout panics on load. The caller owns
 where this file lives and whether it is committed.
