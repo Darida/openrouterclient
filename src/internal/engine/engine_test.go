@@ -355,6 +355,85 @@ func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstPickedModel
 	t.Fatalf("history %+v has no failed entry for gen-limited against %s", entries, pickedModel)
 }
 
+const cohereRefusal = `{"error":{"message":"Provider returned error","code":400,"metadata":{"raw":"{\"message\":\"invalid request: received non-supported constraint for type: 'string'. constraint: 'minLength'\"}","provider_name":"Cohere","is_byok":false}}}`
+
+func refuse(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusBadRequest)
+	fmt.Fprint(w, cohereRefusal)
+}
+
+func refusedFirst(w http.ResponseWriter, r *http.Request, n int) {
+	if n == 1 {
+		refuse(w)
+		return
+	}
+	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
+}
+
+func alwaysRefused(w http.ResponseWriter, r *http.Request, n int) { refuse(w) }
+
+func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRefusalAgainstPickedModel(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: refusedFirst, review: noNotes}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
+		t.Fatalf("setup: GenerateText failed: %v", err)
+	}
+
+	// Act
+	engine.Close()
+	entries := readHistory(t, path)
+
+	// Assert
+	for _, e := range entries {
+		if f := e.Fields(); f.Model == pickedModel && f.Outcome == history.OutcomeRefused && f.Quality == model.QualityUnusable {
+			return
+		}
+	}
+	t.Fatalf("history %+v has no unusable refused entry for %s", entries, pickedModel)
+}
+
+func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: alwaysRefused, review: noNotes}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || len(exhausted.Attempts) != settings.Hedge.MaxAttempts {
+		t.Fatalf("err = %v, want AttemptsExhaustedError with %d attempts", err, settings.Hedge.MaxAttempts)
+	}
+	for _, a := range exhausted.Attempts {
+		if a.Outcome != model.OutcomeRefused {
+			t.Fatalf("attempt %+v, want outcome refused", a)
+		}
+	}
+}
+
+func TestEngineGenerateText_whenEveryAttemptRefused_thenRecordsNoRefusal(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: alwaysRefused, review: noNotes}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateText(context.Background(), requirements); err == nil {
+		t.Fatal("setup: GenerateText succeeded, want every attempt refused")
+	}
+
+	// Act
+	engine.Close()
+	_, statErr := os.Stat(path)
+
+	// Assert
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("history %+v was written, want nothing recorded", readHistory(t, path))
+	}
+}
+
 func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{

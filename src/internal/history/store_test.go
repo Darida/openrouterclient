@@ -129,3 +129,50 @@ func TestStoreOpen_whenEntryInvalid_thenPanics(t *testing.T) {
 	// Act
 	Open(path)
 }
+
+func refusedFields(at time.Time) EntryFields {
+	return EntryFields{Timestamp: at, Model: "m", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeRefused, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, Tag: "t"}
+}
+
+func TestNewEntry_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing.T) {
+	// Arrange
+	fields := refusedFields(time.Now())
+
+	// Act
+	entry := NewEntry(fields)
+
+	// Assert
+	if entry.Fields().Outcome != OutcomeRefused {
+		t.Fatalf("entry = %+v, want a refused entry", entry.Fields())
+	}
+}
+
+func TestNewEntry_whenFailedOutcomeLacksGenerationID_thenPanics(t *testing.T) {
+	// Arrange
+	fields := refusedFields(time.Now())
+	fields.Outcome = OutcomeFailed
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	NewEntry(fields)
+}
+
+func TestStoreRecordManual_whenGenerationIDEmpty_thenErrors(t *testing.T) {
+	// Arrange
+	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store.Append(NewEntry(refusedFields(time.Now())))
+
+	// Act
+	err := store.RecordManual("", model.QualityHigh, "good", time.Now())
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error for an empty generation id")
+	}
+}

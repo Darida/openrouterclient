@@ -29,6 +29,10 @@ const (
 	OutcomeFailed        Outcome = "failed"
 	OutcomeTimeout       Outcome = "timeout"
 	OutcomeInvalidOutput Outcome = "invalid_output"
+	// The model or its provider refused the request as one it can't serve.
+	// Recorded only when another attempt at the same request succeeded, and
+	// the only outcome that may lack a generation id.
+	OutcomeRefused Outcome = "refused"
 )
 
 // EntryFields is an Entry's shape; NewEntry is the only way to turn one into an Entry.

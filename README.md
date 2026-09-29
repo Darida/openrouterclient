@@ -69,7 +69,16 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 - **Attribution.** Every attempt names its model, so a failure is recorded
   against the model that attempt asked. A request OpenRouter never
   accepted, which has no `X-Generation-Id`, never reached the model, so it
-  is reported in the returned error but not written to history.
+  is reported in the returned error but not written to history. A refusal
+  (below) is the one exception.
+- **Refusals.** A 400, 404, or 422 means the attempt's model or provider
+  refused the request, for example over a schema keyword it doesn't
+  support or an account data policy that excludes its only endpoint. The
+  attempt fails as `refused`, and the verdict waits for the race: if
+  another attempt won, the request was servable, so the refusal is recorded
+  against the model as `unusable`, with or without a generation id. If
+  nothing won, the refusal is no evidence about any model: it is returned
+  in `AttemptsExhaustedError` with the full raw body and not recorded.
 - **Provider errors.** OpenRouter sends a 200 status as soon as it accepts
   a request, so an upstream failure can arrive as an `error` object inside
   a 200 body as well as with a transient non-200 status. A 200 whose body
@@ -122,7 +131,8 @@ This library never falls back and never swallows a failure.
   caller's context are no evidence about any model, so they are not
   recorded.
 - Only transient chat statuses (408, 429, 500, 502, 503, 504) count as a
-  model failure. Any other non-200 status means the request or the key is
+  model failure, plus refusals (400, 404, 422) when another attempt in the
+  same race won. Any other non-200 status means the request or the key is
   wrong, so it panics.
 - Anything unexpected panics, with the full raw body in the message. That
   includes a 200 body that isn't JSON, a non-200 body that isn't an
@@ -137,7 +147,8 @@ This library never falls back and never swallows a failure.
 ## History file
 
 `Config.HistoryPath` points to a JSON array with one object per generation
-outcome. Each object holds the timestamp, model, generation id, whether
+outcome. Each object holds the timestamp, model, generation id (empty only
+for a `refused` outcome), whether
 the rating was automatic or manual, the quality, the request's target
 quality and tag, latency, and a reason for failures and manual ratings.
 Writes are serialized within the process and protected with a file lock

@@ -15,7 +15,15 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/history"
 )
 
-// Only these are the model's fault; anything else is a bug in our request or key.
+// A model or provider that can't serve this particular request answers with
+// one of these; whether that's the model's fault is judged once the race ends.
+var refusalStatuses = map[int]bool{
+	http.StatusBadRequest:          true,
+	http.StatusNotFound:            true,
+	http.StatusUnprocessableEntity: true,
+}
+
+// Only these, and refusals, are the model's fault; anything else is a bug in our request or key.
 var retryableStatuses = map[int]bool{
 	http.StatusRequestTimeout:      true,
 	http.StatusTooManyRequests:     true,
@@ -69,6 +77,9 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 
 	if resp.StatusCode != http.StatusOK {
 		providerErr := chat.ParseErrorBody(body)
+		if refusalStatuses[resp.StatusCode] {
+			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, body)), false, false
+		}
 		if !retryableStatuses[resp.StatusCode] {
 			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, body))
 		}
@@ -102,6 +113,16 @@ func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time
 	}
 	result.outcome = history.OutcomeSuccess
 	return result, true, false
+}
+
+// refused keeps the full body as the reason, since an all-refused race is
+// returned to the caller as its only evidence of what went wrong.
+func (e *Engine) refused(ctx context.Context, modelID, generationID string, start time.Time, reason string) attempt {
+	result := e.failed(ctx, modelID, generationID, start, reason)
+	if result.outcome == history.OutcomeFailed {
+		result.outcome = history.OutcomeRefused
+	}
+	return result
 }
 
 func (e *Engine) failed(ctx context.Context, modelID, generationID string, start time.Time, reason string) attempt {

@@ -119,6 +119,8 @@ type Outcome[T any] struct {
 
 func (o Outcome[T]) IsWinner(index int) bool { return index == o.winner }
 
+func (o Outcome[T]) HasWinner() bool { return o.winner != -1 }
+
 func isClosed(ch chan struct{}) bool {
 	select {
 	case <-ch:

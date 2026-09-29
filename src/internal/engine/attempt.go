@@ -12,7 +12,8 @@ import (
 type attempt struct {
 	model string
 	// Empty when OpenRouter never accepted the request; such an attempt is
-	// reported but not recorded, since nothing reached the model.
+	// reported but not recorded, since nothing reached the model, unless it
+	// was refused.
 	generationID string
 	outcome      history.Outcome
 	// The caller's context ended it; it's no evidence about any model.

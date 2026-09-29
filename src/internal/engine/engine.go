@@ -162,7 +162,7 @@ func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel)
 		if a.outcome != history.OutcomeSuccess {
 			e.logger.Warn("openrouter: attempt", "role", role, "n", i+1, "model", a.model, "outcome", a.outcome, "latency", a.latency.Round(time.Millisecond), "resends", a.resends, "reason", a.reason)
 			failures = append(failures, model.FailedAttempt{Outcome: publicOutcome(a.outcome), Model: a.model, GenerationID: a.generationID, Quality: model.QualityUnusable, Reason: rolePrefix(role) + a.reason})
-			if a.generationID != "" {
+			if isRecordableFailure(a, outcome.HasWinner()) {
 				e.history.Append(e.entry(a, label, model.QualityUnusable, a.reason))
 			}
 			continue
@@ -176,6 +176,15 @@ func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel)
 		}
 	}
 	return failures
+}
+
+// A refusal counts against its model only when another attempt at the same
+// request won, proving the request itself was servable.
+func isRecordableFailure(a attempt, raceWon bool) bool {
+	if a.outcome == history.OutcomeRefused {
+		return raceWon
+	}
+	return a.generationID != ""
 }
 
 func (e *Engine) recordGeneration(gen attempt, req model.TextGenerationRequirements, rated model.Quality, reason string) {
@@ -274,6 +283,8 @@ func publicOutcome(o history.Outcome) model.AttemptOutcome {
 		return model.OutcomeTimeout
 	case history.OutcomeInvalidOutput:
 		return model.OutcomeInvalidOutput
+	case history.OutcomeRefused:
+		return model.OutcomeRefused
 	}
 	panic(fmt.Sprintf("engine: no public outcome for %q", o))
 }
