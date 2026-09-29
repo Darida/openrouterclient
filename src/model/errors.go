@@ -31,6 +31,10 @@ const (
 	// The reply was missing, not JSON, or did not match the requested schema.
 	OutcomeInvalidOutput AttemptOutcome = "invalid_output"
 	OutcomeBelowTarget   AttemptOutcome = "below_target"
+	// The model or its provider refused the request (HTTP 400, 404, or 422),
+	// for example over a schema keyword it doesn't support or an account
+	// data policy that excludes its only endpoint.
+	OutcomeRefused AttemptOutcome = "refused"
 )
 
 // Error groups identical failures into one "model outcome ×N (reason)" entry each.

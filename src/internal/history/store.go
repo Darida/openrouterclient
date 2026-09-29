@@ -43,13 +43,16 @@ func (s *Store) Exclusions(now time.Time, tag string) Exclusions {
 }
 
 // RecordManual returns an error for caller mistakes: an invalid quality, an
-// id with no automatic generator entry, or an id already rated.
+// empty id, an id with no automatic generator entry, or an id already rated.
 func (s *Store) RecordManual(generationID string, q model.Quality, reason string, now time.Time) error {
 	if !quality.IsRating(q) {
 		return fmt.Errorf("history: manual quality must be high, medium, or low, got %q", q)
 	}
 	if reason == "" {
 		return errors.New("history: manual rating needs a reason")
+	}
+	if generationID == "" {
+		return errors.New("history: manual rating needs a generation id")
 	}
 	var err error
 	s.withLock(func() {
