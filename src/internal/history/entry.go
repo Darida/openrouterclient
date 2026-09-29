@@ -50,7 +50,9 @@ type EntryFields struct {
 	// The request's TargetQuality. Set for generator entries only.
 	TargetQuality  model.Quality `json:"targetQuality,omitempty"`
 	LatencySeconds float64       `json:"latencySeconds"`
-	Reason         string        `json:"reason,omitempty"`
+	// The request's Timeout; a success at least this slow counts as a failure.
+	TimeoutSeconds float64 `json:"timeoutSeconds"`
+	Reason         string  `json:"reason,omitempty"`
 	// The request's Tag; a manual rating inherits the rated generation's.
 	Tag string `json:"tag"`
 }

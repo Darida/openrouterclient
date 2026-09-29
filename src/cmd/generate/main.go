@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/Darida/openrouterclient/src/api"
 	"github.com/Darida/openrouterclient/src/model"
@@ -63,6 +64,7 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 		TargetQuality:            input.TargetQuality,
 		Tag:                      tag,
 		ModelTier:                tier,
+		Timeout:                  time.Duration(input.TimeoutSeconds) * time.Second,
 		MaxOutputTokens:          input.MaxOutputTokens,
 	}
 }

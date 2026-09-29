@@ -111,7 +111,7 @@ func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequireme
 // rating, or with none if the review had no winner.
 func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationRequirements, gen attempt, round int) (reviewedRound, []model.FailedAttempt, bool) {
 	messages := []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(gen.content)), chat.UserMessage(review.Prompt(req.OutputValidationRules))}
-	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag}, messages, review.Schema(), review.Validate)
+	rev, failures, ok := e.hedge(ctx, req, raceLabel{role: history.RoleReviewer, tag: req.Tag, timeout: req.Timeout}, messages, review.Schema(), review.Validate)
 	if !ok {
 		e.recordGeneration(gen, req, "", "never reviewed")
 		return reviewedRound{}, failures, false
@@ -136,7 +136,7 @@ func (e *Engine) Close() {
 func (e *Engine) hedge(ctx context.Context, req model.TextGenerationRequirements, label raceLabel, messages []chat.Message, schema model.JSONSchema, validate func(json.RawMessage) error) (attempt, []model.FailedAttempt, bool) {
 	maxTokens := maxOutputTokens(req)
 	candidates := e.candidateModels(req.ModelTier, label.tag, promptTokens(messages, schema), maxTokens)
-	race := hedge.Run(ctx, e.settings.Hedge, func(attemptCtx context.Context, num int) (attempt, bool) {
+	race := hedge.Run(ctx, e.timing(req), func(attemptCtx context.Context, num int) (attempt, bool) {
 		modelID := candidates[rand.IntN(len(candidates))]
 		return e.runAttempt(attemptCtx, modelID, chat.BuildPayload(messages, schema, modelID, maxTokens), validate)
 	})
@@ -150,6 +150,10 @@ func (e *Engine) hedge(ctx context.Context, req model.TextGenerationRequirements
 		e.recordAttempts(race.Settled(), label)
 	}()
 	return winner, nil, true
+}
+
+func (e *Engine) timing(req model.TextGenerationRequirements) hedge.Timing {
+	return hedge.Timing{MaxAttempts: e.settings.MaxAttempts, Stagger: req.Timeout, AttemptTimeout: req.Timeout + e.settings.AttemptGrace}
 }
 
 func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel) []model.FailedAttempt {
@@ -202,6 +206,7 @@ func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason strin
 		Quality:        q,
 		TargetQuality:  label.target,
 		LatencySeconds: a.latency.Seconds(),
+		TimeoutSeconds: label.timeout.Seconds(),
 		Reason:         reason,
 		Tag:            label.tag,
 	})
@@ -287,6 +292,9 @@ func validateRequirements(req model.TextGenerationRequirements) {
 	if req.ModelTier != model.ModelTierFree && req.ModelTier != model.ModelTierPaid {
 		panic(fmt.Sprintf("engine: ModelTier must be free or paid, got %q", req.ModelTier))
 	}
+	if req.Timeout <= 0 {
+		panic(fmt.Sprintf("engine: Timeout must be positive, got %v", req.Timeout))
+	}
 	if req.MaxOutputTokens < 0 {
 		panic(fmt.Sprintf("engine: MaxOutputTokens must not be negative, got %d", req.MaxOutputTokens))
 	}
@@ -314,5 +322,5 @@ func rolePrefix(role history.Role) string {
 }
 
 func generatorLabel(req model.TextGenerationRequirements) raceLabel {
-	return raceLabel{role: history.RoleGenerator, target: req.TargetQuality, tag: req.Tag}
+	return raceLabel{role: history.RoleGenerator, target: req.TargetQuality, tag: req.Tag, timeout: req.Timeout}
 }

@@ -10,7 +10,7 @@ import (
 )
 
 func generatorFields(generationID string, q, target model.Quality, at time.Time) EntryFields {
-	return EntryFields{Timestamp: at, Model: "m", GenerationID: generationID, Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeSuccess, Quality: q, TargetQuality: target, Tag: "t"}
+	return EntryFields{Timestamp: at, Model: "m", GenerationID: generationID, Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeSuccess, Quality: q, TargetQuality: target, TimeoutSeconds: 60, Tag: "t"}
 }
 
 func TestStoreRecordManual_whenGenerationUnknown_thenErrors(t *testing.T) {
@@ -131,7 +131,7 @@ func TestStoreOpen_whenEntryInvalid_thenPanics(t *testing.T) {
 }
 
 func refusedFields(at time.Time) EntryFields {
-	return EntryFields{Timestamp: at, Model: "m", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeRefused, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, Tag: "t"}
+	return EntryFields{Timestamp: at, Model: "m", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeRefused, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: "t"}
 }
 
 func TestNewEntry_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing.T) {
@@ -175,4 +175,20 @@ func TestStoreRecordManual_whenGenerationIDEmpty_thenErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for an empty generation id")
 	}
+}
+
+func TestNewEntry_whenTimeoutMissing_thenPanics(t *testing.T) {
+	// Arrange
+	fields := generatorFields("g", model.QualityHigh, model.QualityHigh, time.Now())
+	fields.TimeoutSeconds = 0
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	NewEntry(fields)
 }

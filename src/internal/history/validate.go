@@ -21,6 +21,9 @@ func validate(f EntryFields) error {
 	if f.Timestamp.IsZero() || f.Model == "" || f.Tag == "" {
 		return fmt.Errorf("invalid entry %+v: timestamp, model, and tag are required", f)
 	}
+	if f.TimeoutSeconds <= 0 {
+		return fmt.Errorf("invalid entry %+v: timeoutSeconds must be positive", f)
+	}
 	if f.GenerationID == "" && f.Outcome != OutcomeRefused {
 		return fmt.Errorf("invalid entry %+v: generationId is required unless the outcome is refused", f)
 	}

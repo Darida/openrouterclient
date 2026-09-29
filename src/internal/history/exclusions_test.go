@@ -10,7 +10,7 @@ import (
 func failedEntries(n int, at time.Time, tag string) []Entry {
 	entries := make([]Entry, n)
 	for i := range entries {
-		entries[i] = NewEntry(EntryFields{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, Tag: tag})
+		entries[i] = NewEntry(EntryFields{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: tag})
 	}
 	return entries
 }
@@ -54,17 +54,18 @@ func TestCountsAsFailure_whenQualityBelowTarget_thenTrue(t *testing.T) {
 	}
 }
 
-func TestCountsAsFailure_whenSuccessTookSixtySeconds_thenTrue(t *testing.T) {
+func TestCountsAsFailure_whenSuccessTookItsTimeout_thenTrue(t *testing.T) {
 	// Arrange
 	e := generatorFields("g", model.QualityHigh, model.QualityHigh, time.Now())
-	e.LatencySeconds = 60
+	e.TimeoutSeconds = 90
+	e.LatencySeconds = 90
 
 	// Act
 	got := countsAsFailure(e)
 
 	// Assert
 	if !got {
-		t.Fatal("a 60s success should count as a failure")
+		t.Fatal("a success that took its timeout should count as a failure")
 	}
 }
 

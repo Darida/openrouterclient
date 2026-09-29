@@ -31,6 +31,8 @@ type raceLabel struct {
 	// Empty for the reviewer, whose output has no target.
 	target model.Quality
 	tag    string
+	// The request's Timeout, against which history judges a success slow.
+	timeout time.Duration
 }
 
 // reviewedRound is one generation plus the automatic review that rated it.

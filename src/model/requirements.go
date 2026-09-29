@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // DefaultMaxOutputTokens applies when MaxOutputTokens is 0.
 const DefaultMaxOutputTokens = 10_000
@@ -32,6 +35,11 @@ type TextGenerationRequirements struct {
 	// failure under the same tag counts in full; under another tag, half.
 	Tag       string
 	ModelTier ModelTier
+	// How long an attempt may stay pending before the next one starts, and
+	// how long a success may take before it counts against its model. Each
+	// attempt is cut off shortly after. Applies to generation and review
+	// calls alike. 0 means api.DefaultTimeout.
+	Timeout time.Duration
 	// Sent as the response token limit, and priced as the output when ranking
 	// paid models by cost. 0 means DefaultMaxOutputTokens.
 	MaxOutputTokens int

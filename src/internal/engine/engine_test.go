@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -32,6 +31,7 @@ var requirements = model.TextGenerationRequirements{
 	TargetQuality:            model.QualityHigh,
 	Tag:                      "fruit-test",
 	ModelTier:                model.ModelTierFree,
+	Timeout:                  200 * time.Millisecond,
 }
 
 // The fake catalog's only candidate, so every attempt picks it.
@@ -94,7 +94,8 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 	settings := Settings{
 		ChatURL:             server.URL + "/chat",
 		CatalogURL:          server.URL + "/models",
-		Hedge:               hedge.Timing{MaxAttempts: 2, Stagger: 5 * time.Second, AttemptTimeout: 200 * time.Millisecond},
+		MaxAttempts:         2,
+		AttemptGrace:        10 * time.Millisecond,
 		MaxRounds:           3,
 		RejectionRetryDelay: 10 * time.Millisecond,
 	}
@@ -296,7 +297,7 @@ func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResends
 	// Arrange
 	fake := &fakeOpenRouter{generate: overloadedFirst, review: noNotes}
 	_, settings := fake.serve(t)
-	settings.Hedge.MaxAttempts = 1
+	settings.MaxAttempts = 1
 	engine, _ := newEngine(t, settings)
 
 	// Act
@@ -411,8 +412,8 @@ func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	if !errors.As(err, &exhausted) || len(exhausted.Attempts) != settings.Hedge.MaxAttempts {
-		t.Fatalf("err = %v, want AttemptsExhaustedError with %d attempts", err, settings.Hedge.MaxAttempts)
+	if !errors.As(err, &exhausted) || len(exhausted.Attempts) != settings.MaxAttempts {
+		t.Fatalf("err = %v, want AttemptsExhaustedError with %d attempts", err, settings.MaxAttempts)
 	}
 	for _, a := range exhausted.Attempts {
 		if a.Outcome != model.OutcomeRefused {
@@ -612,4 +613,20 @@ func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testi
 	if err != nil || got.Review == nil || got.Review.Quality != model.QualityMedium {
 		t.Fatalf("got %+v, %v; want medium quality", got, err)
 	}
+}
+
+func TestEngineValidateRequirements_whenTimeoutZero_thenPanics(t *testing.T) {
+	// Arrange
+	untimed := requirements
+	untimed.Timeout = 0
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	validateRequirements(untimed)
 }
