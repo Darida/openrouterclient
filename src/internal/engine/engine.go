@@ -58,7 +58,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	var failures []model.FailedAttempt
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
-	maxRounds := 1 + maxCorrections(req)
+	maxRounds := 1 + req.MaxCorrections
 	for round := 1; round <= maxRounds; round++ {
 		result, roundFailures, ok := e.runRound(ctx, req, outputValidator, messages, round, maxRounds)
 		failures = append(failures, roundFailures...)
@@ -280,13 +280,6 @@ func maxOutputTokens(req model.TextGenerationRequirements) int {
 		return model.DefaultMaxOutputTokens
 	}
 	return req.MaxOutputTokens
-}
-
-func maxCorrections(req model.TextGenerationRequirements) int {
-	if req.MaxCorrections == 0 {
-		return model.DefaultMaxCorrections
-	}
-	return req.MaxCorrections
 }
 
 func (e *Engine) excludedModels(tag string) []string {

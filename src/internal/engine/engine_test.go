@@ -28,6 +28,7 @@ var requirements = model.TextGenerationRequirements{
 	},
 	OutputValidationRules:    "1. The fruit must be yellow.",
 	ReviewToleranceThreshold: 3,
+	MaxCorrections:           2,
 	TargetQuality:            model.QualityHigh,
 	Tag:                      "fruit-test",
 	ModelTier:                model.ModelTierFree,
@@ -218,18 +219,20 @@ func TestEngineGenerateText_whenMaxCorrectionsSet_thenGeneratesOncePlusCorrectio
 	}
 }
 
-func TestEngineGenerateText_whenMaxCorrectionsZero_thenUsesDefault(t *testing.T) {
+func TestEngineGenerateText_whenMaxCorrectionsZero_thenGeneratesOnce(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
+	noCorrections := requirements
+	noCorrections.MaxCorrections = 0
 
 	// Act
-	engine.GenerateText(context.Background(), requirements)
+	engine.GenerateText(context.Background(), noCorrections)
 
 	// Assert
-	if len(fake.generations) != 1+model.DefaultMaxCorrections {
-		t.Fatalf("generations = %d; want %d", len(fake.generations), 1+model.DefaultMaxCorrections)
+	if len(fake.generations) != 1 {
+		t.Fatalf("generations = %d; want 1", len(fake.generations))
 	}
 }
 
@@ -526,6 +529,7 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *tes
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
 	unreviewed.ReviewToleranceThreshold = 0
+	unreviewed.MaxCorrections = 0
 
 	// Act
 	got, err := engine.GenerateText(context.Background(), unreviewed)
@@ -570,6 +574,7 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
 	unreviewed.ReviewToleranceThreshold = 0
+	unreviewed.MaxCorrections = 0
 	if _, err := engine.GenerateText(context.Background(), unreviewed); err != nil {
 		t.Fatalf("setup: GenerateText failed: %v", err)
 	}
@@ -651,6 +656,7 @@ func TestEngineValidateRequirements_whenThresholdSetWithoutRules_thenPanics(t *t
 	// Arrange
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
+	unreviewed.MaxCorrections = 0
 
 	// Assert
 	defer func() {

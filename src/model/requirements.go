@@ -8,9 +8,6 @@ import (
 // DefaultMaxOutputTokens applies when MaxOutputTokens is 0.
 const DefaultMaxOutputTokens = 10_000
 
-// DefaultMaxCorrections applies when MaxCorrections is 0.
-const DefaultMaxCorrections = 2
-
 // JSONSchema is a JSON Schema document plus the name OpenRouter's strict
 // json_schema response_format registers it under.
 type JSONSchema struct {
@@ -33,7 +30,8 @@ type TextGenerationRequirements struct {
 	ReviewToleranceThreshold int
 	// How many corrections may follow a review that rates the output below
 	// TargetQuality, each one regenerated with the review's notes and reviewed
-	// again. 0 means DefaultMaxCorrections; negative panics. Must be 0 when
+	// again. Required when OutputValidationRules is set: 0 reviews the first
+	// output without correcting it; negative panics. Must be 0 when
 	// OutputValidationRules is empty.
 	MaxCorrections int
 	// The lowest acceptable quality: high, medium, or low. A reviewed result
