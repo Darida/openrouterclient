@@ -40,9 +40,6 @@ const (
 	OutcomeRefused AttemptOutcome = "refused"
 )
 
-// Error groups identical failures into one "model outcome ×N (reason)" entry
-// each. It leads with the review's rejection whenever any attempt was rated
-// below TargetQuality, so a quality miss never reads as a run of failures.
 func (e *AttemptsExhaustedError) Error() string {
 	type key struct {
 		model   string
