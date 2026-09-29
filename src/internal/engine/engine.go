@@ -136,7 +136,7 @@ func (e *Engine) Close() {
 // left unrecorded, because its quality comes from the review.
 func (e *Engine) hedge(ctx context.Context, req model.TextGenerationRequirements, label raceLabel, messages []chat.Message, schema model.JSONSchema, validate func(json.RawMessage) error) (attempt, []model.FailedAttempt, bool) {
 	maxTokens := maxOutputTokens(req)
-	candidates := e.candidateModels(req.ModelTier, label.tag, promptTokens(messages, schema), maxTokens)
+	candidates := e.candidateModels(req.ModelTier, label.tag, req.ExcludedModels, promptTokens(messages, schema), maxTokens)
 	race := hedge.Run(ctx, e.timing(req), func(attemptCtx context.Context, num int) (attempt, bool) {
 		modelID := candidates[rand.IntN(len(candidates))]
 		return e.runAttempt(attemptCtx, modelID, chat.BuildPayload(messages, schema, modelID, maxTokens), validate)
@@ -227,14 +227,20 @@ func entryFields(a attempt, label raceLabel, q model.Quality, reason string) his
 }
 
 // candidateModels drops models whose context can't hold the request, then
-// excluded models, then for the paid tier keeps only the cheapest by
-// estimated cost. It panics when nothing is left to ask.
-func (e *Engine) candidateModels(tier model.ModelTier, tag string, promptTokens, maxTokens int) []string {
-	excluded := e.excludedModels(tag)
+// models excluded by history or by the caller, then for the paid tier keeps
+// only the cheapest by estimated cost. It panics when a caller exclusion
+// names no candidate of tier, or when nothing is left to ask.
+func (e *Engine) candidateModels(tier model.ModelTier, tag string, callerExcluded []string, promptTokens, maxTokens int) []string {
 	available := e.catalog.Candidates(tier)
 	if len(available) == 0 {
 		panic(fmt.Sprintf("engine: OpenRouter's catalog lists no %s structured-output models", tier))
 	}
+	for _, id := range callerExcluded {
+		if !slices.ContainsFunc(available, func(m catalog.Model) bool { return m.ID == id }) {
+			panic(fmt.Sprintf("engine: ExcludedModels names %q, which is not a %s structured-output model in OpenRouter's catalog", id, tier))
+		}
+	}
+	excluded := slices.Concat(e.excludedModels(tag), callerExcluded)
 	requestTokens := promptTokens + maxTokens
 	var fitting []catalog.Model
 	for _, m := range available {

@@ -41,6 +41,10 @@ type TextGenerationRequirements struct {
 	// failure under the same tag counts in full; under another tag, half.
 	Tag       string
 	ModelTier ModelTier
+	// Exact model IDs never asked, for generation or review. Optional. Each
+	// must name a structured-output model of ModelTier in OpenRouter's
+	// catalog; an empty, unknown, or other-tier ID panics.
+	ExcludedModels []string
 	// How long an attempt may stay pending before the next one starts, and
 	// how long a success may take before it counts against its model. Each
 	// attempt is cut off shortly after. Applies to generation and review

@@ -9,8 +9,9 @@ Each call goes through these steps:
 1. **Generate.** Each attempt picks a model at random from the models of
    the request's `ModelTier` that support structured output, minus those
    whose context length can't hold the estimated prompt tokens (chars ÷ 4,
-   schema included) plus `MaxOutputTokens`, and minus those
-   the local history marks as unreliable, and sends the prompt to it with a
+   schema included) plus `MaxOutputTokens`, minus those
+   the local history marks as unreliable, and minus the request's
+   `ExcludedModels` (exact IDs, applied to review too), and sends the prompt to it with a
    strict `json_schema` response format and `MaxOutputTokens` (default
    10,000) as `max_tokens`. For the paid tier, candidates are first
    narrowed to the cheapest: each is priced as prompt chars ÷ 4 × prompt
@@ -131,7 +132,8 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requ
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
 `reviewToleranceThreshold` (required with rules, absent without),
-`targetQuality`, and optionally `timeoutSeconds`, `maxOutputTokens`, and
+`targetQuality`, and optionally `timeoutSeconds`, `maxOutputTokens`,
+`excludedModels` (a list of exact model IDs), and
 `maxCorrections` (required with rules, 0 or more; absent without). `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
@@ -172,7 +174,8 @@ This library never falls back and never swallows a failure.
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context
   length, or leaves no candidate after the context-length filter and
-  exclusions, an invalid `OutputSchema`, `TargetQuality`, `ReviewToleranceThreshold`, or `Tag`, and an
+  exclusions, an `ExcludedModels` ID that isn't a structured-output model
+  of the request's tier in the catalog, an invalid `OutputSchema`, `TargetQuality`, `ReviewToleranceThreshold`, or `Tag`, and an
   unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.
 - `New` returns an error for any missing `Config` field. Every field is

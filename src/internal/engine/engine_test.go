@@ -636,6 +636,124 @@ func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *
 	}
 }
 
+func TestEngineGenerateText_whenCheapestModelExcluded_thenAsksNextCheapest(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := requirements
+	paid.ModelTier = model.ModelTierPaid
+	paid.ExcludedModels = []string{"cheap/model"}
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), paid)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "pricey/model" {
+		t.Fatalf("err=%v generations=%+v; want one request to pricey/model", err, fake.generations)
+	}
+}
+
+func TestEngineGenerateText_whenCheapestModelExcluded_thenReviewerNeverAsksIt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := requirements
+	paid.ModelTier = model.ModelTierPaid
+	paid.ExcludedModels = []string{"cheap/model"}
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), paid)
+
+	// Assert
+	if err != nil || len(fake.reviews) != 1 || fake.reviews[0].Model != "pricey/model" {
+		t.Fatalf("err=%v reviews=%+v; want one review request to pricey/model", err, fake.reviews)
+	}
+}
+
+func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenPanics(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	unknown := requirements
+	unknown.ExcludedModels = []string{"missing/model:free"}
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	engine.GenerateText(context.Background(), unknown)
+}
+
+func TestEngineGenerateText_whenExcludedModelInOtherTier_thenPanics(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	otherTier := requirements
+	otherTier.ExcludedModels = []string{"cheap/model"}
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	engine.GenerateText(context.Background(), otherTier)
+}
+
+func TestEngineGenerateText_whenEveryCandidateExcluded_thenPanics(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	allExcluded := requirements
+	allExcluded.ExcludedModels = []string{pickedModel}
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	engine.GenerateText(context.Background(), allExcluded)
+}
+
 func TestEngineValidateRequirements_whenRulesSetWithoutThreshold_thenPanics(t *testing.T) {
 	// Arrange
 	unthresholded := requirements

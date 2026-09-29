@@ -22,4 +22,6 @@ type requirementsFile struct {
 	TimeoutSeconds int `json:"timeoutSeconds"`
 	// Optional; 0 or absent means model.DefaultMaxOutputTokens.
 	MaxOutputTokens int `json:"maxOutputTokens"`
+	// Optional; exact model IDs never asked, for generation or review.
+	ExcludedModels []string `json:"excludedModels"`
 }

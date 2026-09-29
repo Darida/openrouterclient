@@ -92,6 +92,7 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 		ModelTier:                tier,
 		Timeout:                  time.Duration(input.TimeoutSeconds) * time.Second,
 		MaxOutputTokens:          input.MaxOutputTokens,
+		ExcludedModels:           input.ExcludedModels,
 	}
 }
 
