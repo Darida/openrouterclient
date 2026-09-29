@@ -60,12 +60,20 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 	if err := decoder.Decode(&input); err != nil {
 		fail(fmt.Sprintf("%s: %v", path, err))
 	}
+	var maxReviewRetries int
+	if input.MaxReviewRetries != nil {
+		if *input.MaxReviewRetries < 1 {
+			fail(fmt.Sprintf("%s: maxReviewRetries must be at least 1 when present, got %d", path, *input.MaxReviewRetries))
+		}
+		maxReviewRetries = *input.MaxReviewRetries
+	}
 	return model.TextGenerationRequirements{
 		Prompt:                   input.Prompt,
 		OutputSchema:             model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
 		OutputValidationRules:    input.OutputValidationRules,
 		ReviewToleranceThreshold: input.ReviewToleranceThreshold,
-		TargetQuality:            input.TargetQuality,
+		MaxReviewRetries:         maxReviewRetries,
+		TargetQuality:           input.TargetQuality,
 		Tag:                      tag,
 		ModelTier:                tier,
 		Timeout:                  time.Duration(input.TimeoutSeconds) * time.Second,

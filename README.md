@@ -37,7 +37,9 @@ Each call goes through these steps:
 3. **Correct.** If that quality is below `TargetQuality`, a correction
    request sends the original prompt, the previous reply, and the review
    notes, and asks the model to address the notes. The correction is then
-   reviewed again.
+   reviewed again. Each correction sends only the latest reply and its
+   notes. `MaxReviewRetries` caps the corrections; 0 means 2, a negative
+   value panics, and it must be 0 without rules.
 4. **Track.** Every generation's quality is recorded against the model
    that produced it: the automatic review's rating, `unusable` for
    failures, timeouts, and aborts, and any manual rating from
@@ -102,8 +104,8 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   non-200 status counts as a failure of the attempt's model. Requests go
   out with provider fallbacks disabled, so a failing provider fails that
   attempt instead of being silently retried elsewhere.
-- **Correction rounds.** There are at most 3 rounds, counting the first
-  generation. Failed or timed-out review attempts are recorded against the
+- **Correction rounds.** There are at most 1 + `MaxReviewRetries` rounds,
+  counting the first generation. Failed or timed-out review attempts are recorded against the
   reviewer's model. Output that doesn't match the schema, whether from the
   generator or the reviewer, is rated `unusable`.
 - **Exclusion.** A result counts as a failure if its quality is below the
@@ -125,7 +127,9 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requ
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
 `reviewToleranceThreshold` (required with rules, absent without),
-`targetQuality`, and optionally `timeoutSeconds` and `maxOutputTokens`. `--paid` switches from
+`targetQuality`, and optionally `timeoutSeconds`, `maxOutputTokens`, and
+`maxReviewRetries` (only with rules; absent means 2, and a present value
+must be at least 1). `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
 `--tag=...`. History goes to

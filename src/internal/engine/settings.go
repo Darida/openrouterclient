@@ -11,8 +11,6 @@ type Settings struct {
 	MaxAttempts int
 	// Lets a success at exactly Timeout be recorded as slow, not as a timeout.
 	GraceAfterTimeout time.Duration
-	// Generation rounds per call, counting the first; each later one is a correction.
-	MaxRounds int
 	// Pause before resending a request the provider rejected before generating.
 	RejectionRetryDelay time.Duration
 }
@@ -22,6 +20,5 @@ var Production = Settings{
 	CatalogURL:          "https://openrouter.ai/api/v1/models",
 	MaxAttempts:         3,
 	GraceAfterTimeout:   time.Second,
-	MaxRounds:           3,
 	RejectionRetryDelay: time.Second,
 }

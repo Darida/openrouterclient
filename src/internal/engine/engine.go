@@ -47,8 +47,8 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 }
 
 // GenerateText generates, reviews, and corrects until a result meets
-// TargetQuality or MaxRounds runs out. Every correction resends the original
-// prompt, the latest reply, and its review notes.
+// TargetQuality or the request's review retries run out. Every correction
+// resends the original prompt, the latest reply, and its review notes.
 func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequirements) (model.GeneratedText, error) {
 	validateRequirements(req)
 	outputValidator := schema.Compile(req.OutputSchema.Name, req.OutputSchema.Schema)
@@ -58,8 +58,9 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	var failures []model.FailedAttempt
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
-	for round := 1; round <= e.settings.MaxRounds; round++ {
-		result, roundFailures, ok := e.runRound(ctx, req, outputValidator, messages, round)
+	maxRounds := 1 + maxReviewRetries(req)
+	for round := 1; round <= maxRounds; round++ {
+		result, roundFailures, ok := e.runRound(ctx, req, outputValidator, messages, round, maxRounds)
 		failures = append(failures, roundFailures...)
 		if err := ctx.Err(); err != nil {
 			return model.GeneratedText{}, err
@@ -97,8 +98,8 @@ func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality,
 
 // runRound generates from messages and reviews the winner. It returns false
 // when either the generation or the review had no winner.
-func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round int) (reviewedRound, []model.FailedAttempt, bool) {
-	e.logger.Info("openrouter: generating", "round", round, "maxRounds", e.settings.MaxRounds)
+func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round, maxRounds int) (reviewedRound, []model.FailedAttempt, bool) {
+	e.logger.Info("openrouter: generating", "round", round, "maxRounds", maxRounds)
 	gen, failures, ok := e.hedge(ctx, req, generatorLabel(req), messages, req.OutputSchema, outputValidator.Validate)
 	if !ok {
 		return reviewedRound{}, failures, false
@@ -268,6 +269,13 @@ func maxOutputTokens(req model.TextGenerationRequirements) int {
 	return req.MaxOutputTokens
 }
 
+func maxReviewRetries(req model.TextGenerationRequirements) int {
+	if req.MaxReviewRetries == 0 {
+		return model.DefaultMaxReviewRetries
+	}
+	return req.MaxReviewRetries
+}
+
 func (e *Engine) excludedModels(tag string) []string {
 	exclusions := e.history.Exclusions(time.Now(), tag)
 	if len(exclusions.BelowCap) > 0 || len(exclusions.Excluded) > 0 {
@@ -288,6 +296,12 @@ func validateRequirements(req model.TextGenerationRequirements) {
 	}
 	if req.OutputValidationRules == "" && req.ReviewToleranceThreshold != 0 {
 		panic(fmt.Sprintf("engine: ReviewToleranceThreshold must be 0 when OutputValidationRules is empty, got %d", req.ReviewToleranceThreshold))
+	}
+	if req.MaxReviewRetries < 0 {
+		panic(fmt.Sprintf("engine: MaxReviewRetries must not be negative, got %d", req.MaxReviewRetries))
+	}
+	if req.OutputValidationRules == "" && req.MaxReviewRetries != 0 {
+		panic(fmt.Sprintf("engine: MaxReviewRetries must be 0 when OutputValidationRules is empty, got %d", req.MaxReviewRetries))
 	}
 	if req.ModelTier != model.ModelTierFree && req.ModelTier != model.ModelTierPaid {
 		panic(fmt.Sprintf("engine: ModelTier must be free or paid, got %q", req.ModelTier))
