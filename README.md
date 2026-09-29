@@ -8,6 +8,8 @@ Each call goes through these steps:
 
 1. **Generate.** Each attempt picks a model at random from the models of
    the request's `ModelTier` that support structured output, minus those
+   whose context length can't hold the estimated prompt tokens (chars ÷ 4,
+   schema included) plus `MaxOutputTokens`, and minus those
    the local history marks as unreliable, and sends the prompt to it with a
    strict `json_schema` response format and `MaxOutputTokens` (default
    10,000) as `max_tokens`. For the paid tier, candidates are first
@@ -137,7 +139,8 @@ This library never falls back and never swallows a failure.
 - Anything unexpected panics, with the full raw body in the message. That
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
-  model list that can't be fetched or leaves no candidate after
+  model list that can't be fetched, lists a candidate without a context
+  length, or leaves no candidate after the context-length filter and
   exclusions, an invalid `OutputSchema`, `TargetQuality`, or `Tag`, and an
   unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.

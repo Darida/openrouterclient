@@ -11,11 +11,11 @@ import (
 )
 
 const catalogBody = `{"data":[
-  {"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
-  {"id":"liquid/lfm-2.5-2.6b","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"}},
-  {"id":"openai/gpt-6-luna-pro:batch","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.00000005","completion":"0.0000001"}},
-  {"id":"openrouter/auto","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-1","completion":"-1"}},
-  {"id":"nvidia/nemotron-3.5-lightning:free","supported_parameters":["tools"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
+  {"id":"liquid/lfm-2.5-2.6b:free","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
+  {"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"}},
+  {"id":"openai/gpt-6-luna-pro:batch","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.00000005","completion":"0.0000001"}},
+  {"id":"openrouter/auto","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-1","completion":"-1"}},
+  {"id":"nvidia/nemotron-3.5-lightning:free","context_length":32768,"supported_parameters":["tools"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
 ]}`
 
 func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
@@ -74,4 +74,22 @@ func TestCatalogFreeStructuredModels_whenCalledTwiceWithinTTL_thenFetchesOnce(t 
 	if fetches.Load() != 1 {
 		t.Fatalf("fetched %d times, want 1", fetches.Load())
 	}
+}
+
+func TestCatalogCandidates_whenContextLengthMissing_thenPanics(t *testing.T) {
+	// Arrange
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}]}`))
+	}))
+	t.Cleanup(server.Close)
+	c := &Catalog{URL: server.URL, HTTP: server.Client()}
+	defer func() {
+		// Assert
+		if recover() == nil {
+			t.Fatal("want panic")
+		}
+	}()
+
+	// Act
+	c.Candidates(model.ModelTierFree)
 }
