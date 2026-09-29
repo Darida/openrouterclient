@@ -82,9 +82,10 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"data":[
-			{"id":"slow/model:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
-			{"id":"cheap/model","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}},
-			{"id":"pricey/model","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"}}
+			{"id":"slow/model:free","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
+			{"id":"tiny/model","context_length":10000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000001"}},
+			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}},
+			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"}}
 		]}`)
 	})
 	server := httptest.NewServer(mux)
@@ -519,5 +520,25 @@ func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testin
 	// Assert
 	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "cheap/model" {
 		t.Fatalf("err=%v generations=%+v; want one request to cheap/model", err, fake.generations)
+	}
+}
+
+func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) { reply(w, "gen-1", "cheap/model", `{"fruit":"banana"}`) },
+		review:   noNotes,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := requirements
+	paid.ModelTier = model.ModelTierPaid
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), paid)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model == "tiny/model" {
+		t.Fatalf("err=%v generations=%+v; want one request, not to tiny/model", err, fake.generations)
 	}
 }

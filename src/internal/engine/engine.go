@@ -207,22 +207,33 @@ func (e *Engine) entry(a attempt, label raceLabel, q model.Quality, reason strin
 	})
 }
 
-// candidateModels drops excluded models, then for the paid tier keeps only
-// the cheapest by estimated cost. It panics when nothing is left to ask.
+// candidateModels drops models whose context can't hold the request, then
+// excluded models, then for the paid tier keeps only the cheapest by
+// estimated cost. It panics when nothing is left to ask.
 func (e *Engine) candidateModels(tier model.ModelTier, tag string, promptTokens, maxTokens int) []string {
 	excluded := e.excludedModels(tag)
 	available := e.catalog.Candidates(tier)
 	if len(available) == 0 {
 		panic(fmt.Sprintf("engine: OpenRouter's catalog lists no %s structured-output models", tier))
 	}
-	var models []catalog.Model
+	requestTokens := promptTokens + maxTokens
+	var fitting []catalog.Model
 	for _, m := range available {
+		if requestTokens <= m.ContextTokens {
+			fitting = append(fitting, m)
+		}
+	}
+	if len(fitting) == 0 {
+		panic(fmt.Sprintf("engine: no %s structured-output model has context for ~%d prompt + %d output tokens", tier, promptTokens, maxTokens))
+	}
+	var models []catalog.Model
+	for _, m := range fitting {
 		if !slices.Contains(excluded, m.ID) {
 			models = append(models, m)
 		}
 	}
 	if len(models) == 0 {
-		panic(fmt.Sprintf("engine: every %s structured-output model is excluded: %v", tier, excluded))
+		panic(fmt.Sprintf("engine: every %s structured-output model with enough context is excluded: %v", tier, excluded))
 	}
 	if tier == model.ModelTierPaid {
 		pool, ceilingUSD := cost.CheapestPool(models, promptTokens, maxTokens)

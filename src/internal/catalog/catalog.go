@@ -31,7 +31,8 @@ type Catalog struct {
 }
 
 // Candidates lists tier's models that support strict json_schema output. It
-// panics on a candidate whose price is negative or unparseable.
+// panics on a candidate whose price is negative or unparseable, or whose
+// context length is missing.
 func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -41,7 +42,7 @@ func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	var candidates []Model
 	for _, m := range c.models {
 		if inTier(m.ID, tier) && !isBatchOnly(m.ID) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
-			candidates = append(candidates, Model{ID: m.ID, PromptUSDPerToken: price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: price(m.ID, "completion", m.Pricing.Completion)})
+			candidates = append(candidates, Model{ID: m.ID, ContextTokens: contextTokens(m), PromptUSDPerToken: price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: price(m.ID, "completion", m.Pricing.Completion)})
 		}
 	}
 	return candidates
@@ -100,6 +101,13 @@ func inTier(id string, tier model.ModelTier) bool {
 // A ":batch" variant rejects the chat/completions endpoint with a 404.
 func isBatchOnly(id string) bool {
 	return strings.HasSuffix(id, ":batch")
+}
+
+func contextTokens(m entry) int {
+	if m.ContextLength <= 0 {
+		panic(fmt.Sprintf("catalog: model %q has no context length: %+v", m.ID, m))
+	}
+	return m.ContextLength
 }
 
 func price(id, kind, raw string) float64 {
