@@ -74,16 +74,17 @@ func (s *Store) RecordManual(generationID string, q model.Quality, reason string
 			return
 		}
 		entry := NewEntry(EntryFields{
-			Timestamp:     now.UTC(),
-			Model:         rated.Model,
-			GenerationID:  generationID,
-			Role:          RoleGenerator,
-			Source:        SourceManual,
-			Outcome:       OutcomeSuccess,
-			Quality:       q,
-			TargetQuality: rated.TargetQuality,
-			Reason:        reason,
-			Tag:           rated.Tag,
+			Timestamp:      now.UTC(),
+			Model:          rated.Model,
+			GenerationID:   generationID,
+			Role:           RoleGenerator,
+			Source:         SourceManual,
+			Outcome:        OutcomeSuccess,
+			Quality:        q,
+			TargetQuality:  rated.TargetQuality,
+			TimeoutSeconds: rated.TimeoutSeconds,
+			Reason:         reason,
+			Tag:            rated.Tag,
 		})
 		s.save(append(entries, entry))
 	})

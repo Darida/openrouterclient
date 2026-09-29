@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/Darida/openrouterclient/src/api"
 	"github.com/Darida/openrouterclient/src/model"
@@ -16,17 +18,19 @@ func main() {
 	inputPath := flag.String("input", "", "requirements JSON file (required)")
 	historyPath := flag.String("history", "", "history JSON file (required)")
 	tag := flag.String("tag", "", "history tag for this request (required)")
+	rateScript := flag.String("rate-script", "", "path to bin/rate.sh, for the logged rating command (required)")
 	paid := flag.Bool("paid", false, "use the cheapest paid models instead of free ones")
 	flag.Parse()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if *inputPath == "" || *historyPath == "" || *tag == "" || apiKey == "" {
-		fail("--input, --history, --tag, and OPENROUTER_API_KEY are all required")
+	if *inputPath == "" || *historyPath == "" || *tag == "" || *rateScript == "" || apiKey == "" {
+		fail("--input, --history, --tag, --rate-script, and OPENROUTER_API_KEY are all required")
 	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	client, err := api.New(api.Config{
 		APIKey:      apiKey,
 		HistoryPath: *historyPath,
-		Logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Logger:      logger,
 	})
 	if err != nil {
 		fail(err.Error())
@@ -41,6 +45,7 @@ func main() {
 	if err != nil {
 		fail(err.Error())
 	}
+	logger.Info("generate: to rate this run as low quality, run", "command", rateLowCommand(*rateScript, result.GenerationID))
 }
 
 func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerationRequirements {
@@ -63,8 +68,17 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 		TargetQuality:            input.TargetQuality,
 		Tag:                      tag,
 		ModelTier:                tier,
+		Timeout:                  time.Duration(input.TimeoutSeconds) * time.Second,
 		MaxOutputTokens:          input.MaxOutputTokens,
 	}
+}
+
+func rateLowCommand(rateScript, generationID string) string {
+	return strings.Join([]string{shellQuote(rateScript), shellQuote("--id=" + generationID), "--quality=low", shellQuote("--reason=human rejected output")}, " ")
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func tierFor(paid bool) model.ModelTier {

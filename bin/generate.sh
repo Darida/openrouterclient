@@ -29,10 +29,8 @@ if [ -z "$KEY" ] || [ -z "$TAG" ] || [ -z "$INPUT" ]; then
 fi
 INPUT="$(realpath "$INPUT")"
 REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-
-# Per-user state, never in the repo: see the XDG Base Directory spec's state dir.
-HISTORY_DIR="$HOME/.local/state/openrouterclient"
+. "$REPO_ROOT/bin/history-path.sh"
 mkdir -p "$HISTORY_DIR"
 
 # Passed by environment so the key stays out of the Go program's argv.
-OPENROUTER_API_KEY="$KEY" exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$HISTORY_DIR/history.json" --tag="$TAG" $PAID
+OPENROUTER_API_KEY="$KEY" exec go -C "$REPO_ROOT" run ./src/cmd/generate --input="$INPUT" --history="$HISTORY_PATH" --tag="$TAG" --rate-script="$REPO_ROOT/bin/rate.sh" $PAID

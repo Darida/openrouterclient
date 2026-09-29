@@ -16,6 +16,8 @@ type requirementsFile struct {
 	// Required when outputValidationRules is set; absent otherwise.
 	ReviewToleranceThreshold int           `json:"reviewToleranceThreshold"`
 	TargetQuality            model.Quality `json:"targetQuality"`
+	// Optional; 0 or absent means api.DefaultTimeout.
+	TimeoutSeconds int `json:"timeoutSeconds"`
 	// Optional; 0 or absent means model.DefaultMaxOutputTokens.
 	MaxOutputTokens int `json:"maxOutputTokens"`
 }

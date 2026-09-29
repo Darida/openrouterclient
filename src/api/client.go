@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/engine"
 	"github.com/Darida/openrouterclient/src/internal/history"
@@ -24,6 +25,9 @@ type Client interface {
 	Close()
 }
 
+// DefaultTimeout is the timeout for a request whose Timeout is 0.
+const DefaultTimeout = 60 * time.Second
+
 // Every field is required. New returns an error if any is unset.
 type Config struct {
 	APIKey string
@@ -39,5 +43,16 @@ func New(cfg Config) (Client, error) {
 	if cfg.APIKey == "" || cfg.HistoryPath == "" || cfg.Logger == nil {
 		return nil, errors.New("openrouterclient: Config.APIKey, Config.HistoryPath, and Config.Logger are all required")
 	}
-	return engine.New(engine.Production, cfg.APIKey, history.Open(cfg.HistoryPath), cfg.Logger), nil
+	return &client{Engine: engine.New(engine.Production, cfg.APIKey, history.Open(cfg.HistoryPath), cfg.Logger)}, nil
+}
+
+type client struct {
+	*engine.Engine
+}
+
+func (c *client) GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error) {
+	if requirements.Timeout == 0 {
+		requirements.Timeout = DefaultTimeout
+	}
+	return c.Engine.GenerateText(ctx, requirements)
 }

@@ -68,8 +68,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 
 - **Hedged attempts.** The first attempt starts immediately. Another
   attempt starts when the previous one fails, or when it has been pending
-  60s with no response. There are at most 3 attempts. Every attempt gets
-  61s, just past the 60s at which a success already counts as a failure,
+  for the request's `Timeout` with no response. `Timeout` defaults to 60s
+  when it's 0; `Client.GenerateText` fills that in, and a negative value
+  panics. There are at most 3 attempts. Every attempt gets `Timeout` plus
+  1s, just past the point at which a success already counts as a failure,
   whether or not another attempt has won; one still running then is a
   timeout. Both generation and review calls are hedged this way. A call
   moves on the moment an attempt wins; stragglers finish and are recorded
@@ -102,7 +104,8 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   reviewer's model. Output that doesn't match the schema, whether from the
   generator or the reviewer, is rated `unusable`.
 - **Exclusion.** A result counts as a failure if its quality is below the
-  target of the request that produced it, or if it took 60s or longer.
+  target of the request that produced it, or if it took at least that
+  request's `Timeout`.
   Every entry carries its request's `Tag`; for a new request, a failure
   under the same tag counts 1 and one under another tag counts 0.5. A
   model is excluded once its weighted failures exceed any of these limits: more
@@ -119,15 +122,24 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requ
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
 `reviewToleranceThreshold` (required with rules, absent without),
-`targetQuality`, and optionally `maxOutputTokens`. `--paid` switches from
+`targetQuality`, and optionally `timeoutSeconds` and `maxOutputTokens`. `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
 `--tag=...`. History goes to
 `~/.local/state/openrouterclient/history.json`, which is per user and per
 machine and never inside the repo.
 
-It prints the reviewed result as JSON on stdout and logs on stderr. If
-every attempt fails, it prints the failed attempts on stderr and exits 1.
+It prints the reviewed result as JSON on stdout and logs on stderr. The
+last log line holds a ready-to-paste `bin/rate.sh` command that rates the
+result low with the reason "human rejected output". If every attempt
+fails, it prints the failed attempts on stderr and exits 1.
+
+```sh
+bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
+```
+
+`bin/rate.sh` records a manual rating in the same history file. It needs
+no API key, since rating never contacts OpenRouter.
 
 ## Failure policy
 
@@ -160,7 +172,7 @@ This library never falls back and never swallows a failure.
 outcome. Each object holds the timestamp, model, generation id (empty only
 for a `refused` outcome), whether
 the rating was automatic or manual, the quality, the request's target
-quality and tag, latency, and a reason for failures and manual ratings.
+quality, tag, and timeout, latency, and a reason for failures and manual ratings.
 Writes are serialized within the process and protected with a file lock
-across processes. A file with entries that lack a tag panics on load. The caller owns
+across processes. A file with entries that lack a tag or timeout panics on load. The caller owns
 where this file lives and whether it is committed.

@@ -8,9 +8,6 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/quality"
 )
 
-// A success this slow counts against the model as much as a failure.
-const slowLatencySeconds = 60
-
 // A failure recorded under another request's tag is weaker evidence about
 // how a model handles this one.
 const (
@@ -81,7 +78,7 @@ func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 }
 
 func countsAsFailure(f EntryFields) bool {
-	if f.Outcome != OutcomeSuccess || f.LatencySeconds >= slowLatencySeconds {
+	if f.Outcome != OutcomeSuccess || f.LatencySeconds >= f.TimeoutSeconds {
 		return true
 	}
 	return f.Quality != "" && f.TargetQuality != "" && quality.Below(f.Quality, f.TargetQuality)
