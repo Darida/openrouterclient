@@ -47,7 +47,7 @@ func New(settings Settings, apiKey string, store *history.Store, logger *slog.Lo
 }
 
 // GenerateText generates, reviews, and corrects until a result meets
-// TargetQuality or the request's review retries run out. Every correction
+// TargetQuality or the request's corrections run out. Every correction
 // resends the original prompt, the latest reply, and its review notes.
 func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequirements) (model.GeneratedText, error) {
 	validateRequirements(req)
@@ -58,7 +58,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 	var failures []model.FailedAttempt
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
 
-	maxRounds := 1 + maxReviewRetries(req)
+	maxRounds := 1 + maxCorrections(req)
 	for round := 1; round <= maxRounds; round++ {
 		result, roundFailures, ok := e.runRound(ctx, req, outputValidator, messages, round, maxRounds)
 		failures = append(failures, roundFailures...)
@@ -282,11 +282,11 @@ func maxOutputTokens(req model.TextGenerationRequirements) int {
 	return req.MaxOutputTokens
 }
 
-func maxReviewRetries(req model.TextGenerationRequirements) int {
-	if req.MaxReviewRetries == 0 {
-		return model.DefaultMaxReviewRetries
+func maxCorrections(req model.TextGenerationRequirements) int {
+	if req.MaxCorrections == 0 {
+		return model.DefaultMaxCorrections
 	}
-	return req.MaxReviewRetries
+	return req.MaxCorrections
 }
 
 func (e *Engine) excludedModels(tag string) []string {
@@ -310,11 +310,11 @@ func validateRequirements(req model.TextGenerationRequirements) {
 	if req.OutputValidationRules == "" && req.ReviewToleranceThreshold != 0 {
 		panic(fmt.Sprintf("engine: ReviewToleranceThreshold must be 0 when OutputValidationRules is empty, got %d", req.ReviewToleranceThreshold))
 	}
-	if req.MaxReviewRetries < 0 {
-		panic(fmt.Sprintf("engine: MaxReviewRetries must not be negative, got %d", req.MaxReviewRetries))
+	if req.MaxCorrections < 0 {
+		panic(fmt.Sprintf("engine: MaxCorrections must not be negative, got %d", req.MaxCorrections))
 	}
-	if req.OutputValidationRules == "" && req.MaxReviewRetries != 0 {
-		panic(fmt.Sprintf("engine: MaxReviewRetries must be 0 when OutputValidationRules is empty, got %d", req.MaxReviewRetries))
+	if req.OutputValidationRules == "" && req.MaxCorrections != 0 {
+		panic(fmt.Sprintf("engine: MaxCorrections must be 0 when OutputValidationRules is empty, got %d", req.MaxCorrections))
 	}
 	if req.ModelTier != model.ModelTierFree && req.ModelTier != model.ModelTierPaid {
 		panic(fmt.Sprintf("engine: ModelTier must be free or paid, got %q", req.ModelTier))
