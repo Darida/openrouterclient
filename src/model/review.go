@@ -5,8 +5,7 @@ type ReviewVerdict struct {
 	// One entry per offending instance; a rule broken in several places
 	// appears once per place.
 	Violations []ReviewViolation `json:"violations"`
-	// The reviewer's sum of BadScore over all violations. A verdict whose
-	// total differs from that sum is rejected as off-schema.
+	// The reviewer's own sum of BadScore; a mismatch with the real sum rejects the verdict.
 	TotalBadScore int `json:"totalBadScore"`
 }
 
