@@ -206,15 +206,15 @@ func TestEngineGenerateText_whenMaxReviewRetriesSet_thenGeneratesOncePlusRetries
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	fourRetries := requirements
-	fourRetries.MaxReviewRetries = 4
+	threeRetries := requirements
+	threeRetries.MaxReviewRetries = 3
 
 	// Act
-	engine.GenerateText(context.Background(), fourRetries)
+	engine.GenerateText(context.Background(), threeRetries)
 
 	// Assert
-	if len(fake.generations) != 5 {
-		t.Fatalf("generations = %d; want 5", len(fake.generations))
+	if len(fake.generations) != 4 {
+		t.Fatalf("generations = %d; want 4", len(fake.generations))
 	}
 }
 
