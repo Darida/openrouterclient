@@ -2,10 +2,10 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/history"
-	"github.com/Darida/openrouterclient/src/internal/review"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -54,13 +54,13 @@ func (r reviewedRound) generatedText() model.GeneratedText {
 	}
 }
 
-func (r reviewedRound) rejection() model.FailedAttempt {
+func (r reviewedRound) rejection(outputFile, reviewFile string) model.FailedAttempt {
 	return model.FailedAttempt{
 		Outcome:      model.OutcomeBelowTarget,
 		Model:        r.gen.model,
 		GenerationID: r.gen.generationID,
 		Quality:      r.quality,
-		Reason:       review.FormatNotes(r.verdict.Notes),
+		Reason:       fmt.Sprintf("rejected output saved to %s; review saved to %s", outputFile, reviewFile),
 		Content:      r.gen.content,
 		Review:       r.review(),
 	}

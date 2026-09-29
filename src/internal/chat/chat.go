@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -66,7 +67,7 @@ func ParseErrorBody(body []byte) *ProviderError {
 		Error *ProviderError `json:"error"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Error == nil || parsed.Error.Message == "" {
-		panic(fmt.Sprintf("chat: error response is not an OpenRouter error object — body: %s", body))
+		panic(fmt.Sprintf("chat: error response is not an OpenRouter error object — body saved to %s", replyfile.Save("unexpected-error", body)))
 	}
 	return parsed.Error
 }
@@ -84,7 +85,7 @@ func ParseResponse(body []byte) (json.RawMessage, error) {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		panic(fmt.Sprintf("chat: 200 response body is not JSON: %v — body: %s", err, body))
+		panic(fmt.Sprintf("chat: 200 response body is not JSON: %v — body saved to %s", err, replyfile.Save("unexpected-ok", body)))
 	}
 	if parsed.Error != nil {
 		return nil, parsed.Error
@@ -94,7 +95,7 @@ func ParseResponse(body []byte) (json.RawMessage, error) {
 	}
 	raw := parsed.Choices[0].Message.Content
 	if !json.Valid([]byte(raw)) {
-		return nil, fmt.Errorf("message content is not valid JSON: %s", raw)
+		return nil, errors.New("message content is not valid JSON")
 	}
 	return json.RawMessage(raw), nil
 }

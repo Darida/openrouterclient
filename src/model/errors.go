@@ -20,7 +20,8 @@ type FailedAttempt struct {
 	GenerationID string
 	// Unusable for every outcome except OutcomeBelowTarget.
 	Quality Quality
-	// The raw HTTP error body, transport error, or the review's notes.
+	// What went wrong, naming the file that holds any raw reply rather than
+	// quoting it.
 	Reason string
 	// Set only for OutcomeBelowTarget: the schema-valid output the review
 	// rejected.

@@ -18,6 +18,7 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/quality"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/internal/review"
 	"github.com/Darida/openrouterclient/src/internal/schema"
 	"github.com/Darida/openrouterclient/src/model"
@@ -71,7 +72,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		if !quality.Below(result.quality, req.TargetQuality) {
 			return result.generatedText(), nil
 		}
-		failures = append(failures, result.rejection())
+		failures = append(failures, result.rejection(replyfile.Save(result.gen.generationID, result.gen.content), replyfile.Save(result.rev.generationID, result.rev.content)))
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}

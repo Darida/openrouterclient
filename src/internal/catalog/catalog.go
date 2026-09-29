@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -69,13 +70,13 @@ func (c *Catalog) fetch() []entry {
 		panic(fmt.Sprintf("catalog: read %s: %v", c.URL, err))
 	}
 	if resp.StatusCode != http.StatusOK {
-		panic(fmt.Sprintf("catalog: %s returned HTTP %d: %s", c.URL, resp.StatusCode, body))
+		panic(fmt.Sprintf("catalog: %s returned HTTP %d: body saved to %s", c.URL, resp.StatusCode, replyfile.Save("catalog", body)))
 	}
 	var parsed struct {
 		Data []entry `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Data) == 0 {
-		panic(fmt.Sprintf("catalog: %s returned no models: %v", c.URL, err))
+		panic(fmt.Sprintf("catalog: %s returned no models: %v — body saved to %s", c.URL, err, replyfile.Save("catalog", body)))
 	}
 	for _, m := range parsed.Data {
 		if m.ID == "" {
