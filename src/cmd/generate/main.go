@@ -48,7 +48,7 @@ func main() {
 		if errors.As(err, &exhausted) {
 			for _, a := range exhausted.Attempts {
 				if a.Outcome == model.OutcomeBelowTarget {
-					logger.Info("generate: to reject this review and unrate its generation, run", "generation", a.GenerationID, "command", rateLowCommand(*rateScript, a.ReviewGenerationID, "human rejected review"))
+					logger.Info("generate: to reject this review and unrate its generation, run", "generation", a.GenerationID, "command", rateLowCommand(*rateScript, a.Review.GenerationID, "human rejected review"))
 				}
 			}
 		}

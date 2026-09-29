@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -21,9 +22,12 @@ type FailedAttempt struct {
 	Quality Quality
 	// The raw HTTP error body, transport error, or the review's notes.
 	Reason string
-	// Set only for OutcomeBelowTarget: the review's own generation. Rating it
-	// low clears the rating this review gave.
-	ReviewGenerationID string
+	// Set only for OutcomeBelowTarget: the schema-valid output the review
+	// rejected.
+	Content json.RawMessage
+	// Set only for OutcomeBelowTarget: the review that rejected Content. Rating
+	// its GenerationID low clears the rating it gave.
+	Review *Review
 }
 
 type AttemptOutcome string

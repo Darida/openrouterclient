@@ -71,7 +71,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		if !quality.Below(result.quality, req.TargetQuality) {
 			return result.generatedText(), nil
 		}
-		failures = append(failures, model.FailedAttempt{Outcome: model.OutcomeBelowTarget, Model: result.gen.model, GenerationID: result.gen.generationID, Quality: result.quality, Reason: review.FormatNotes(result.verdict.Notes), ReviewGenerationID: result.rev.generationID})
+		failures = append(failures, result.rejection())
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Notes))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}

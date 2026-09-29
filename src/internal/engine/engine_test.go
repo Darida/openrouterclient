@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -969,7 +970,44 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewG
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	if !errors.As(err, &exhausted) || exhausted.Attempts[0].ReviewGenerationID != "gen-review-1" {
+	if !errors.As(err, &exhausted) || exhausted.Attempts[0].Review.GenerationID != "gen-review-1" {
 		t.Fatalf("err = %v; want the first below-target attempt to name gen-review-1", err)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesRejectedContent(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || string(exhausted.Attempts[0].Content) != `{"fruit":"apple"}` {
+		t.Fatalf("err = %v; want the first below-target attempt to carry the rejected output", err)
+	}
+}
+
+func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewVerdict(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneCorrection := requirements
+	oneCorrection.MaxCorrections = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneCorrection)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	want := model.ReviewVerdict{Notes: []model.ReviewNote{{Rule: "1", Text: "Not yellow."}}, TotalBadScore: 1}
+	if !errors.As(err, &exhausted) || !reflect.DeepEqual(exhausted.Attempts[0].Review.Verdict, want) {
+		t.Fatalf("err = %v; want the first below-target attempt to carry the rejecting verdict", err)
 	}
 }

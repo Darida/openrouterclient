@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/review"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -49,6 +50,22 @@ func (r reviewedRound) generatedText() model.GeneratedText {
 		Content:      r.gen.content,
 		Model:        r.gen.model,
 		GenerationID: r.gen.generationID,
-		Review:       &model.Review{Verdict: r.verdict, Quality: r.quality, Model: r.rev.model, GenerationID: r.rev.generationID},
+		Review:       r.review(),
 	}
+}
+
+func (r reviewedRound) rejection() model.FailedAttempt {
+	return model.FailedAttempt{
+		Outcome:      model.OutcomeBelowTarget,
+		Model:        r.gen.model,
+		GenerationID: r.gen.generationID,
+		Quality:      r.quality,
+		Reason:       review.FormatNotes(r.verdict.Notes),
+		Content:      r.gen.content,
+		Review:       r.review(),
+	}
+}
+
+func (r reviewedRound) review() *model.Review {
+	return &model.Review{Verdict: r.verdict, Quality: r.quality, Model: r.rev.model, GenerationID: r.rev.generationID}
 }

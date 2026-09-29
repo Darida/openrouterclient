@@ -161,7 +161,8 @@ This library never falls back and never swallows a failure.
 
 - `GenerateText` returns an error in exactly two cases: every allowed
   attempt failed, timed out, or fell below `TargetQuality`
-  (`*AttemptsExhaustedError`, which carries every attempt's raw reason; its
+  (`*AttemptsExhaustedError`, which carries every attempt's raw reason, and
+  for each output the review rejected, that output and its review; its
   message says the review rejected the output if any attempt fell below
   `TargetQuality`, and that all attempts failed otherwise), or
   the caller's context ended (`ctx.Err()`). Attempts cut short by the
