@@ -9,9 +9,8 @@ type Settings struct {
 	CatalogURL string
 	// Hedged attempts per race; their timing comes from each request's Timeout.
 	MaxAttempts int
-	// How far past the request's Timeout an attempt runs before it's cut off,
-	// so a success at exactly Timeout is recorded as slow, not as a timeout.
-	AttemptGrace time.Duration
+	// Lets a success at exactly Timeout be recorded as slow, not as a timeout.
+	GraceAfterTimeout time.Duration
 	// Generation rounds per call, counting the first; each later one is a correction.
 	MaxRounds int
 	// Pause before resending a request the provider rejected before generating.
@@ -22,7 +21,7 @@ var Production = Settings{
 	ChatURL:             "https://openrouter.ai/api/v1/chat/completions",
 	CatalogURL:          "https://openrouter.ai/api/v1/models",
 	MaxAttempts:         3,
-	AttemptGrace:        time.Second,
+	GraceAfterTimeout:   time.Second,
 	MaxRounds:           3,
 	RejectionRetryDelay: time.Second,
 }

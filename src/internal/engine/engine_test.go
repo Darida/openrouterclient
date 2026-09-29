@@ -95,7 +95,7 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		ChatURL:             server.URL + "/chat",
 		CatalogURL:          server.URL + "/models",
 		MaxAttempts:         2,
-		AttemptGrace:        10 * time.Millisecond,
+		GraceAfterTimeout:   10 * time.Millisecond,
 		MaxRounds:           3,
 		RejectionRetryDelay: 10 * time.Millisecond,
 	}

@@ -153,7 +153,7 @@ func (e *Engine) hedge(ctx context.Context, req model.TextGenerationRequirements
 }
 
 func (e *Engine) timing(req model.TextGenerationRequirements) hedge.Timing {
-	return hedge.Timing{MaxAttempts: e.settings.MaxAttempts, Stagger: req.Timeout, AttemptTimeout: req.Timeout + e.settings.AttemptGrace}
+	return hedge.Timing{MaxAttempts: e.settings.MaxAttempts, Stagger: req.Timeout, AttemptTimeout: req.Timeout + e.settings.GraceAfterTimeout}
 }
 
 func (e *Engine) recordAttempts(outcome hedge.Outcome[attempt], label raceLabel) []model.FailedAttempt {
