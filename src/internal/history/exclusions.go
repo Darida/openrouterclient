@@ -1,7 +1,8 @@
 package history
 
 import (
-	"fmt"
+	"cmp"
+	"slices"
 	"sort"
 	"time"
 
@@ -24,16 +25,12 @@ const (
 	maxFailuresLifetime = 24
 )
 
-type failureCounts struct {
-	today, week, month, lifetime float64
-}
-
 func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 	todayStart := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	weekStart := now.Add(-7 * 24 * time.Hour)
 	monthStart := now.Add(-30 * 24 * time.Hour)
 
-	counts := map[string]*failureCounts{}
+	counts := map[string]*FailureCounts{}
 	for _, e := range entries {
 		f := e.Fields()
 		if !countsAsFailure(f) {
@@ -41,7 +38,7 @@ func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 		}
 		c, ok := counts[f.Model]
 		if !ok {
-			c = &failureCounts{}
+			c = &FailureCounts{Model: f.Model}
 			counts[f.Model] = c
 		}
 		weight := otherTagWeight
@@ -49,15 +46,15 @@ func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 			weight = sameTagWeight
 		}
 		if !f.Timestamp.Before(todayStart) {
-			c.today += weight
+			c.Today += weight
 		}
 		if !f.Timestamp.Before(weekStart) {
-			c.week += weight
+			c.Week += weight
 		}
 		if !f.Timestamp.Before(monthStart) {
-			c.month += weight
+			c.Month += weight
 		}
-		c.lifetime += weight
+		c.Lifetime += weight
 	}
 
 	models := make([]string, 0, len(counts))
@@ -69,12 +66,14 @@ func computeExclusions(entries []Entry, now time.Time, tag string) Exclusions {
 	var result Exclusions
 	for _, m := range models {
 		c := counts[m]
-		if c.today > maxFailuresToday || c.week > maxFailuresWeek || c.month > maxFailuresMonth || c.lifetime > maxFailuresLifetime {
+		if c.Today > maxFailuresToday || c.Week > maxFailuresWeek || c.Month > maxFailuresMonth || c.Lifetime > maxFailuresLifetime {
 			result.Excluded = append(result.Excluded, m)
 		} else {
-			result.BelowCap = append(result.BelowCap, fmt.Sprintf("%s (today=%g week=%g month=%g lifetime=%g)", m, c.today, c.week, c.month, c.lifetime))
+			result.BelowCap = append(result.BelowCap, *c)
 		}
 	}
+	// Stable, so models tied on today stay in name order.
+	slices.SortStableFunc(result.BelowCap, func(a, b FailureCounts) int { return cmp.Compare(b.Today, a.Today) })
 	return result
 }
 

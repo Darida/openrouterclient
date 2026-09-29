@@ -24,6 +24,8 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
+const nearestExclusionShown = 3
+
 type Engine struct {
 	settings Settings
 	apiKey   string
@@ -286,10 +288,22 @@ func maxOutputTokens(req model.TextGenerationRequirements) int {
 
 func (e *Engine) excludedModels(tag string) []string {
 	exclusions := e.history.Exclusions(time.Now(), tag)
-	if len(exclusions.BelowCap) > 0 || len(exclusions.Excluded) > 0 {
-		e.logger.Info("openrouter: model failures", "tag", tag, "excluded", strings.Join(exclusions.Excluded, ", "), "belowCap", strings.Join(exclusions.BelowCap, ", "))
+	if len(exclusions.Excluded) > 0 {
+		e.logger.Info("openrouter: excluded models", "tag", tag, "count", len(exclusions.Excluded), "models", strings.Join(exclusions.Excluded, ", "))
+	}
+	if len(exclusions.BelowCap) > 0 {
+		nearest := exclusions.BelowCap[:min(nearestExclusionShown, len(exclusions.BelowCap))]
+		e.logger.Info("openrouter: models nearest exclusion", "tag", tag, "total", len(exclusions.BelowCap), "top", formatFailureCounts(nearest))
 	}
 	return exclusions.Excluded
+}
+
+func formatFailureCounts(counts []history.FailureCounts) string {
+	parts := make([]string, len(counts))
+	for i, c := range counts {
+		parts[i] = fmt.Sprintf("%s (today=%g week=%g month=%g lifetime=%g)", c.Model, c.Today, c.Week, c.Month, c.Lifetime)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func validateRequirements(req model.TextGenerationRequirements) {

@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Save writes body to a new file under the system temp directory and returns
-// its path. prefix starts the file name, to tell replies apart at a glance.
+// Save writes body to a new prefix-named file under the system temp directory and returns its path.
 func Save(prefix string, body []byte) string {
 	dir := filepath.Join(os.TempDir(), "openrouterclient")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
