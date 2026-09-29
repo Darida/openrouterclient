@@ -4,6 +4,9 @@ package model
 type ReviewVerdict struct {
 	// One entry per violated rule.
 	Notes []ReviewNote `json:"notes"`
+	// The reviewer's sum of the violated rules' bad scores. A rule in
+	// OutputValidationRules that states no bad score counts 1.
+	TotalBadScore int `json:"totalBadScore"`
 }
 
 type ReviewNote struct {

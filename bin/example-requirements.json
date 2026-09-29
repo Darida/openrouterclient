@@ -19,6 +19,7 @@
       "additionalProperties": false
     }
   },
-  "outputValidationRules": "1. The name must be at most three words.\n2. The name must not contain the word \"bakery\".\n3. The tagline must mention sourdough.",
+  "outputValidationRules": "1. The name must be at most three words.\n2. The name must not contain the word \"bakery\".\n3. The tagline must mention sourdough. (bad score: 3)",
+  "reviewToleranceThreshold": 3,
   "targetQuality": "high"
 }

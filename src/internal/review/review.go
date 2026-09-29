@@ -26,9 +26,10 @@ var verdictSchema = model.JSONSchema{
         "required": ["rule", "text"],
         "additionalProperties": false
       }
-    }
+    },
+    "totalBadScore": {"type": "integer", "description": "The sum of the bad scores of the rules the notes name, one per note."}
   },
-  "required": ["notes"],
+  "required": ["notes", "totalBadScore"],
   "additionalProperties": false
 }`),
 }
@@ -36,8 +37,10 @@ var verdictSchema = model.JSONSchema{
 var verdictValidator = schema.Compile(verdictSchema.Name, verdictSchema.Schema)
 
 const reviewInstructions = `Review your previous reply strictly against the rules below, and nothing else.
+Each rule may state a bad score for violating it; a rule that states none has a bad score of 1.
 Return one note per rule violation: "rule" names the rule as it appears below, and "text" describes the violation and how to fix it.
-If the reply violates no rule, return an empty "notes" array.
+Set "totalBadScore" to the sum of the bad scores of the rules your notes name, counting each note once.
+If the reply violates no rule, return an empty "notes" array and a "totalBadScore" of 0.
 
 Rules:
 `
@@ -50,7 +53,23 @@ Issues:
 
 func Schema() model.JSONSchema { return verdictSchema }
 
-func Validate(content json.RawMessage) error { return verdictValidator.Validate(content) }
+// Validate also rejects a total that contradicts the notes, which strict
+// mode can't express, so the reviewer is rated like any off-schema output.
+func Validate(content json.RawMessage) error {
+	if err := verdictValidator.Validate(content); err != nil {
+		return err
+	}
+	verdict := Parse(content)
+	switch {
+	case verdict.TotalBadScore < 0:
+		return fmt.Errorf("review: totalBadScore %d is negative", verdict.TotalBadScore)
+	case len(verdict.Notes) == 0 && verdict.TotalBadScore != 0:
+		return fmt.Errorf("review: totalBadScore %d with no notes", verdict.TotalBadScore)
+	case len(verdict.Notes) > 0 && verdict.TotalBadScore == 0:
+		return fmt.Errorf("review: totalBadScore 0 with %d notes", len(verdict.Notes))
+	}
+	return nil
+}
 
 func Prompt(rules string) string { return reviewInstructions + rules }
 

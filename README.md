@@ -19,11 +19,17 @@ Each call goes through these steps:
    OpenRouter's catalog, cached in memory for an hour.
 2. **Review.** A follow-up request continues the same conversation. It
    sends the generated answer back, followed by a fixed review
-   instruction plus the caller's `OutputValidationRules`. The reply must match
-   the fixed `ReviewVerdict` schema, which is a list of notes. The number
-   of notes sets the generation's `Quality`. With empty
+   instruction plus the caller's `OutputValidationRules`. Each rule may
+   state a bad score for violating it; a rule that states none counts 1.
+   The reply must match the fixed `ReviewVerdict` schema: a list of notes
+   plus the total bad score of the violated rules. A total of 0 is high, up
+   to the request's `ReviewToleranceThreshold` is medium, and above it is
+   low. A total that is negative, or that disagrees with whether there are
+   notes, counts as reviewer output that fails the schema. With empty
    `OutputValidationRules`, review and correction are skipped and the first
-   schema-valid output is returned, recorded in history as high. Output that fails the schema
+   schema-valid output is returned, recorded in history as high.
+   `ReviewToleranceThreshold` is required (at least 1) with rules and must
+   be 0 without them. Output that fails the schema
    is a failed attempt and never reaches review.
 3. **Correct.** If that quality is below `TargetQuality`, a correction
    request sends the original prompt, the previous reply, and the review
@@ -112,6 +118,7 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requ
 
 The script takes one requirements file with the fields `prompt`,
 `outputSchema` (`name` and `schema`), `outputValidationRules`,
+`reviewToleranceThreshold` (required with rules, absent without),
 `targetQuality`, and optionally `maxOutputTokens`. `--paid` switches from
 free models to the cheapest paid ones. See `bin/example-requirements.json`. The OpenRouter API
 key is required as `--key=...`, and the request's history tag as
@@ -141,7 +148,7 @@ This library never falls back and never swallows a failure.
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context
   length, or leaves no candidate after the context-length filter and
-  exclusions, an invalid `OutputSchema`, `TargetQuality`, or `Tag`, and an
+  exclusions, an invalid `OutputSchema`, `TargetQuality`, `ReviewToleranceThreshold`, or `Tag`, and an
   unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.
 - `New` returns an error for any missing `Config` field. Every field is

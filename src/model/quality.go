@@ -1,8 +1,9 @@
 package model
 
-// Quality rates one generation. An automatic review gives high for 0 notes,
-// medium for 1–3, and low for 4 or more. A failure or output that doesn't
-// match the schema is unusable.
+// Quality rates one generation. An automatic review gives high for a total
+// bad score of 0, medium for 1 up to the request's ReviewToleranceThreshold,
+// and low above it. A failure or output that doesn't match the schema is
+// unusable.
 type Quality string
 
 const (
