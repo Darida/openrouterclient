@@ -6,9 +6,9 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-func TestQualityFromNoteCount_whenNoNotes_thenHigh(t *testing.T) {
+func TestQualityFromBadScore_whenZero_thenHigh(t *testing.T) {
 	// Act
-	got := FromNoteCount(0)
+	got := FromBadScore(0, 3)
 
 	// Assert
 	if got != model.QualityHigh {
@@ -16,9 +16,9 @@ func TestQualityFromNoteCount_whenNoNotes_thenHigh(t *testing.T) {
 	}
 }
 
-func TestQualityFromNoteCount_whenThreeNotes_thenMedium(t *testing.T) {
+func TestQualityFromBadScore_whenAtThreshold_thenMedium(t *testing.T) {
 	// Act
-	got := FromNoteCount(3)
+	got := FromBadScore(5, 5)
 
 	// Assert
 	if got != model.QualityMedium {
@@ -26,9 +26,9 @@ func TestQualityFromNoteCount_whenThreeNotes_thenMedium(t *testing.T) {
 	}
 }
 
-func TestQualityFromNoteCount_whenFourNotes_thenLow(t *testing.T) {
+func TestQualityFromBadScore_whenAboveThreshold_thenLow(t *testing.T) {
 	// Act
-	got := FromNoteCount(4)
+	got := FromBadScore(6, 5)
 
 	// Assert
 	if got != model.QualityLow {

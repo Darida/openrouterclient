@@ -12,8 +12,10 @@ type requirementsFile struct {
 		Name   string          `json:"name"`
 		Schema json.RawMessage `json:"schema"`
 	} `json:"outputSchema"`
-	OutputValidationRules string        `json:"outputValidationRules"`
-	TargetQuality         model.Quality `json:"targetQuality"`
+	OutputValidationRules string `json:"outputValidationRules"`
+	// Required when outputValidationRules is set; absent otherwise.
+	ReviewToleranceThreshold int           `json:"reviewToleranceThreshold"`
+	TargetQuality            model.Quality `json:"targetQuality"`
 	// Optional; 0 or absent means model.DefaultMaxOutputTokens.
 	MaxOutputTokens int `json:"maxOutputTokens"`
 }

@@ -118,9 +118,9 @@ func (e *Engine) reviewGeneration(ctx context.Context, req model.TextGenerationR
 	}
 
 	verdict := review.Parse(rev.content)
-	rated := quality.FromNoteCount(len(verdict.Notes))
+	rated := quality.FromBadScore(verdict.TotalBadScore, req.ReviewToleranceThreshold)
 	e.recordGeneration(gen, req, rated, review.FormatNotes(verdict.Notes))
-	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes))
+	e.logger.Info("openrouter: reviewed", "round", round, "model", gen.model, "reviewer", rev.model, "quality", rated, "target", req.TargetQuality, "notes", len(verdict.Notes), "badScore", verdict.TotalBadScore, "threshold", req.ReviewToleranceThreshold)
 	return reviewedRound{gen: gen, rev: rev, verdict: verdict, quality: rated}, failures, true
 }
 
@@ -277,6 +277,12 @@ func validateRequirements(req model.TextGenerationRequirements) {
 	}
 	if !quality.IsRating(req.TargetQuality) {
 		panic(fmt.Sprintf("engine: TargetQuality must be high, medium, or low, got %q", req.TargetQuality))
+	}
+	if req.OutputValidationRules != "" && req.ReviewToleranceThreshold < 1 {
+		panic(fmt.Sprintf("engine: ReviewToleranceThreshold must be at least 1 when OutputValidationRules is set, got %d", req.ReviewToleranceThreshold))
+	}
+	if req.OutputValidationRules == "" && req.ReviewToleranceThreshold != 0 {
+		panic(fmt.Sprintf("engine: ReviewToleranceThreshold must be 0 when OutputValidationRules is empty, got %d", req.ReviewToleranceThreshold))
 	}
 	if req.ModelTier != model.ModelTierFree && req.ModelTier != model.ModelTierPaid {
 		panic(fmt.Sprintf("engine: ModelTier must be free or paid, got %q", req.ModelTier))

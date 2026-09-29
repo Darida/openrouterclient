@@ -56,13 +56,14 @@ func readRequirements(path, tag string, tier model.ModelTier) model.TextGenerati
 		fail(fmt.Sprintf("%s: %v", path, err))
 	}
 	return model.TextGenerationRequirements{
-		Prompt:                input.Prompt,
-		OutputSchema:          model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
-		OutputValidationRules: input.OutputValidationRules,
-		TargetQuality:         input.TargetQuality,
-		Tag:                   tag,
-		ModelTier:             tier,
-		MaxOutputTokens:       input.MaxOutputTokens,
+		Prompt:                   input.Prompt,
+		OutputSchema:             model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
+		OutputValidationRules:    input.OutputValidationRules,
+		ReviewToleranceThreshold: input.ReviewToleranceThreshold,
+		TargetQuality:            input.TargetQuality,
+		Tag:                      tag,
+		ModelTier:                tier,
+		MaxOutputTokens:          input.MaxOutputTokens,
 	}
 }
 

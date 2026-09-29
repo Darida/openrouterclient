@@ -6,15 +6,13 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-// Notes above this count drop an automatic review from medium to low.
-const maxMediumNotes = 3
-
-// FromNoteCount rates a generation by how many rule violations its review found.
-func FromNoteCount(notes int) model.Quality {
+// FromBadScore rates a generation by its review's total bad score; a total
+// above threshold drops it from medium to low.
+func FromBadScore(total, threshold int) model.Quality {
 	switch {
-	case notes == 0:
+	case total == 0:
 		return model.QualityHigh
-	case notes <= maxMediumNotes:
+	case total <= threshold:
 		return model.QualityMedium
 	default:
 		return model.QualityLow
