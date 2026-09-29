@@ -161,7 +161,7 @@ func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesViolation
 		},
 		review: func(n int) string {
 			if n == 1 {
-				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}`
+				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit.","badScore":1}],"totalBadScore":1}`
 			}
 			return `{"violations":[],"totalBadScore":0}`
 		},
@@ -183,7 +183,7 @@ func alwaysBelowTarget() *fakeOpenRouter {
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "writer/free", `{"fruit":"apple"}`)
 		},
-		review: func(int) string { return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}` },
+		review: func(int) string { return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Not yellow.","recommendedAction":"Use a yellow fruit.","badScore":1}],"totalBadScore":1}` },
 	}
 }
 
@@ -797,7 +797,7 @@ func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testi
 			reply(w, "gen-1", "writer/free", `{"fruit":"lemon"}`)
 		},
 		review: func(int) string {
-			return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Lemons are pale.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":3}`
+			return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Lemons are pale.","recommendedAction":"Use a yellow fruit.","badScore":3}],"totalBadScore":3}`
 		},
 	}
 	_, settings := fake.serve(t)
@@ -839,7 +839,7 @@ func correctedOnce(t *testing.T) *fakeOpenRouter {
 		},
 		review: func(n int) string {
 			if n == 1 {
-				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit."}],"totalBadScore":1}`
+				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit.","badScore":1}],"totalBadScore":1}`
 			}
 			return `{"violations":[],"totalBadScore":0}`
 		},
@@ -1008,7 +1008,7 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewV
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
-	want := model.ReviewVerdict{Violations: []model.ReviewViolation{{Rule: "1", Evidence: "apple", Explanation: "Not yellow.", RecommendedAction: "Use a yellow fruit."}}, TotalBadScore: 1}
+	want := model.ReviewVerdict{Violations: []model.ReviewViolation{{Rule: "1", Evidence: "apple", Explanation: "Not yellow.", RecommendedAction: "Use a yellow fruit.", BadScore: 1}}, TotalBadScore: 1}
 	if !errors.As(err, &exhausted) || !reflect.DeepEqual(exhausted.Attempts[0].Review.Verdict, want) {
 		t.Fatalf("err = %v; want the first below-target attempt to carry the rejecting verdict", err)
 	}
