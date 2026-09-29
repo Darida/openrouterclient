@@ -97,7 +97,6 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 		CatalogURL:          server.URL + "/models",
 		MaxAttempts:         2,
 		GraceAfterTimeout:   10 * time.Millisecond,
-		MaxRounds:           3,
 		RejectionRetryDelay: 10 * time.Millisecond,
 	}
 	return server, settings
@@ -175,25 +174,97 @@ func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesNotes(t *
 	}
 }
 
-func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *testing.T) {
-	// Arrange
-	fake := &fakeOpenRouter{
+func alwaysBelowTarget() *fakeOpenRouter {
+	return &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
 			reply(w, fmt.Sprintf("gen-%d", n), "writer/free", `{"fruit":"apple"}`)
 		},
 		review: func(int) string { return `{"notes":[{"rule":"1","text":"Not yellow."}],"totalBadScore":1}` },
 	}
+}
+
+func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	oneRetry := requirements
+	oneRetry.MaxReviewRetries = 1
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), oneRetry)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) || len(exhausted.Attempts) != 2 {
+		t.Fatalf("err = %v; want AttemptsExhaustedError with 2 below-target attempts", err)
+	}
+}
+
+func TestEngineGenerateText_whenMaxReviewRetriesSet_thenGeneratesOncePlusRetries(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	threeRetries := requirements
+	threeRetries.MaxReviewRetries = 3
+
+	// Act
+	engine.GenerateText(context.Background(), threeRetries)
+
+	// Assert
+	if len(fake.generations) != 4 {
+		t.Fatalf("generations = %d; want 4", len(fake.generations))
+	}
+}
+
+func TestEngineGenerateText_whenMaxReviewRetriesZero_thenUsesDefault(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	engine.GenerateText(context.Background(), requirements)
 
 	// Assert
-	var exhausted *model.AttemptsExhaustedError
-	if !errors.As(err, &exhausted) || len(exhausted.Attempts) != settings.MaxRounds {
-		t.Fatalf("err = %v; want AttemptsExhaustedError with %d below-target attempts", err, settings.MaxRounds)
+	if len(fake.generations) != 1+model.DefaultMaxReviewRetries {
+		t.Fatalf("generations = %d; want %d", len(fake.generations), 1+model.DefaultMaxReviewRetries)
 	}
+}
+
+func TestEngineValidateRequirements_whenMaxReviewRetriesNegative_thenPanics(t *testing.T) {
+	// Arrange
+	negative := requirements
+	negative.MaxReviewRetries = -1
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	validateRequirements(negative)
+}
+
+func TestEngineValidateRequirements_whenMaxReviewRetriesSetWithoutRules_thenPanics(t *testing.T) {
+	// Arrange
+	unreviewed := requirements
+	unreviewed.OutputValidationRules = ""
+	unreviewed.ReviewToleranceThreshold = 0
+	unreviewed.MaxReviewRetries = 1
+
+	// Assert
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic")
+		}
+	}()
+
+	// Act
+	validateRequirements(unreviewed)
 }
 
 func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedModel(t *testing.T) {
