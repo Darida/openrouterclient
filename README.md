@@ -26,15 +26,17 @@ Each call goes through these steps:
    generated output. Each rule may
    state a bad score for violating it; a rule that states none counts 1.
    The reply must match the fixed `ReviewVerdict` schema: a list of
-   violations plus the total bad score of the violated rules. The reviewer
+   violations plus their total bad score. The reviewer
    reports only violations of the listed rules, never suggestions or
    observations, and only ones it can quote. Each offending instance is its
    own violation, carrying the rule, a verbatim evidence excerpt of about
-   five words, an explanation, and a recommended action. The total counts
-   each violated rule once. A total of 0 is high, up
+   five words, an explanation, a recommended action, and its rule's bad
+   score. The total is the sum of every violation's bad score, so a rule
+   broken twice counts twice. A total of 0 is high, up
    to the request's `ReviewToleranceThreshold` is medium, and above it is
-   low. A total that is negative, or that disagrees with whether there are
-   violations, counts as reviewer output that fails the schema. With empty
+   low. A total that is negative, differs from the sum of the violations'
+   bad scores, or is 0 despite violations counts as reviewer output that
+   fails the schema. With empty
    `OutputValidationRules`, review and correction are skipped and the first
    schema-valid output is returned, recorded in history as high.
    `ReviewToleranceThreshold` is required (at least 1) with rules and must

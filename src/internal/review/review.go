@@ -24,13 +24,14 @@ var verdictSchema = model.JSONSchema{
           "rule": {"type": "string", "description": "The violated rule, quoted or named as it appears in the rules."},
           "evidence": {"type": "string", "description": "A verbatim excerpt of about five words that demonstrates the violation: from the output, or from the task for a missing part."},
           "explanation": {"type": "string", "description": "Why the evidence breaks the rule."},
-          "recommendedAction": {"type": "string", "description": "The specific change that fixes this violation."}
+          "recommendedAction": {"type": "string", "description": "The specific change that fixes this violation."},
+          "badScore": {"type": "integer", "description": "The bad score the violated rule states, or 1 if it states none."}
         },
-        "required": ["rule", "evidence", "explanation", "recommendedAction"],
+        "required": ["rule", "evidence", "explanation", "recommendedAction", "badScore"],
         "additionalProperties": false
       }
     },
-    "totalBadScore": {"type": "integer", "description": "The sum of the bad scores of the rules the violations name, counting each rule once."}
+    "totalBadScore": {"type": "integer", "description": "The sum of badScore over all violations."}
   },
   "required": ["violations", "totalBadScore"],
   "additionalProperties": false
@@ -54,7 +55,8 @@ How you review:
   - "evidence" is a verbatim excerpt of about five words that demonstrates the problem. Quote the output; for something missing, quote the task where the missing part is required.
   - "explanation" says in one or two sentences why the evidence breaks the rule.
   - "recommendedAction" says exactly what to change to fix this instance.
-- Each rule may state a bad score for violating it; a rule that states none has a bad score of 1. Set "totalBadScore" to the sum of the bad scores of the rules your violations name, counting each rule once however many violations name it.
+  - "badScore" is the bad score the rule states for violating it; a rule that states none has a bad score of 1.
+- Set "totalBadScore" to the sum of "badScore" over all your violations.
 - If the output violates no rule, return an empty "violations" array and a "totalBadScore" of 0.
 
 Rules:
@@ -82,12 +84,20 @@ func Validate(content json.RawMessage) error {
 	switch {
 	case verdict.TotalBadScore < 0:
 		return fmt.Errorf("review: totalBadScore %d is negative", verdict.TotalBadScore)
-	case len(verdict.Violations) == 0 && verdict.TotalBadScore != 0:
-		return fmt.Errorf("review: totalBadScore %d with no violations", verdict.TotalBadScore)
+	case verdict.TotalBadScore != sumBadScores(verdict.Violations):
+		return fmt.Errorf("review: totalBadScore %d differs from the violations' badScore sum %d", verdict.TotalBadScore, sumBadScores(verdict.Violations))
 	case len(verdict.Violations) > 0 && verdict.TotalBadScore == 0:
 		return fmt.Errorf("review: totalBadScore 0 with %d violations", len(verdict.Violations))
 	}
 	return nil
+}
+
+func sumBadScores(violations []model.ReviewViolation) int {
+	sum := 0
+	for _, v := range violations {
+		sum += v.BadScore
+	}
+	return sum
 }
 
 // Messages builds a review request that never presents output as an

@@ -5,9 +5,8 @@ type ReviewVerdict struct {
 	// One entry per offending instance; a rule broken in several places
 	// appears once per place.
 	Violations []ReviewViolation `json:"violations"`
-	// The reviewer's sum of the violated rules' bad scores, counting each
-	// rule once however many violations name it. A rule in
-	// OutputValidationRules that states no bad score counts 1.
+	// The reviewer's sum of BadScore over all violations. A verdict whose
+	// total differs from that sum is rejected as off-schema.
 	TotalBadScore int `json:"totalBadScore"`
 }
 
@@ -21,6 +20,8 @@ type ReviewViolation struct {
 	Explanation string `json:"explanation"`
 	// The specific change that would fix this violation.
 	RecommendedAction string `json:"recommendedAction"`
+	// The bad score Rule states in OutputValidationRules, or 1 if it states none.
+	BadScore int `json:"badScore"`
 }
 
 // Review is one completed automatic review. The reviewer is a separate
