@@ -40,7 +40,9 @@ const (
 	OutcomeRefused AttemptOutcome = "refused"
 )
 
-// Error groups identical failures into one "model outcome ×N (reason)" entry each.
+// Error groups identical failures into one "model outcome ×N (reason)" entry
+// each. It leads with the review's rejection whenever any attempt was rated
+// below TargetQuality, so a quality miss never reads as a run of failures.
 func (e *AttemptsExhaustedError) Error() string {
 	type key struct {
 		model   string
@@ -60,5 +62,18 @@ func (e *AttemptsExhaustedError) Error() string {
 	for i, k := range order {
 		parts[i] = fmt.Sprintf("%s %s ×%d (%s)", k.model, k.outcome, counts[k], k.reason)
 	}
-	return fmt.Sprintf("openrouter: all %d attempts failed: %s", len(e.Attempts), strings.Join(parts, "; "))
+	details := strings.Join(parts, "; ")
+	if e.reviewRejected() {
+		return fmt.Sprintf("openrouter: review rejected the output: %s", details)
+	}
+	return fmt.Sprintf("openrouter: all %d attempts failed: %s", len(e.Attempts), details)
+}
+
+func (e *AttemptsExhaustedError) reviewRejected() bool {
+	for _, a := range e.Attempts {
+		if a.Outcome == OutcomeBelowTarget {
+			return true
+		}
+	}
+	return false
 }
