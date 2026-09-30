@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -116,7 +117,7 @@ func newEngine(t *testing.T, settings Settings) (*Engine, string) {
 	// Keeps saved replies out of the real system temp directory.
 	t.Setenv("TMPDIR", t.TempDir())
 	path := filepath.Join(t.TempDir(), "history.json")
-	engine := New(settings, "key", history.Open(path), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	engine := New(settings, "key", history.Open(path), replyfile.Local(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(engine.Close)
 	return engine, path
 }
@@ -1108,7 +1109,7 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRejec
 	if !errors.As(err, &exhausted) {
 		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
 	}
-	_, rest, _ := strings.Cut(exhausted.Attempts[0].Reason, "rejected output saved to ")
+	_, rest, _ := strings.Cut(exhausted.Attempts[0].Reason, "rejected output body saved to ")
 	path, _, _ := strings.Cut(rest, ";")
 	saved, readErr := os.ReadFile(path)
 	if readErr != nil || string(saved) != `{"fruit":"apple"}` {
@@ -1130,9 +1131,29 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRevie
 	if !errors.As(err, &exhausted) {
 		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
 	}
-	_, path, _ := strings.Cut(exhausted.Attempts[0].Reason, "review saved to ")
+	_, path, _ := strings.Cut(exhausted.Attempts[0].Reason, "review body saved to ")
 	saved, readErr := os.ReadFile(path)
 	if readErr != nil || !strings.Contains(string(saved), "Not yellow.") {
 		t.Fatalf("reason %q names %q, which holds %q (%v); want the review", exhausted.Attempts[0].Reason, path, saved, readErr)
+	}
+}
+
+func TestEngineGenerateText_whenRepliesDisabledAndRoundBelowTarget_thenReasonNamesGenerationID(t *testing.T) {
+	// Arrange
+	fake := alwaysBelowTarget()
+	_, settings := fake.serve(t)
+	engine := New(settings, "key", history.Disabled{}, replyfile.Disabled(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(engine.Close)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var exhausted *model.AttemptsExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("err = %v; want AttemptsExhaustedError", err)
+	}
+	if reason := exhausted.Attempts[0].Reason; !strings.Contains(reason, "generation id "+exhausted.Attempts[0].GenerationID) {
+		t.Fatalf("reason = %q, want it to name generation id %s", reason, exhausted.Attempts[0].GenerationID)
 	}
 }

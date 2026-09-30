@@ -54,13 +54,13 @@ func (r reviewedRound) generatedText() model.GeneratedText {
 	}
 }
 
-func (r reviewedRound) rejection(outputFile, reviewFile string) model.FailedAttempt {
+func (r reviewedRound) rejection(output, review string) model.FailedAttempt {
 	return model.FailedAttempt{
 		Outcome:      model.OutcomeBelowTarget,
 		Model:        r.gen.model,
 		GenerationID: r.gen.generationID,
 		Quality:      r.quality,
-		Reason:       fmt.Sprintf("rejected output saved to %s; review saved to %s", outputFile, reviewFile),
+		Reason:       fmt.Sprintf("rejected output %s; review %s", output, review),
 		Content:      r.gen.content,
 		Review:       r.review(),
 	}

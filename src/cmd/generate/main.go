@@ -29,9 +29,10 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	client, err := api.New(api.Config{
-		APIKey:      apiKey,
-		HistoryPath: *historyPath,
-		Logger:      logger,
+		APIKey:  apiKey,
+		History: api.LocalHistory(*historyPath),
+		Replies: api.LocalReplies(),
+		Logger:  logger,
 	})
 	if err != nil {
 		fail(err.Error())

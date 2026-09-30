@@ -8,8 +8,32 @@ import (
 	"path/filepath"
 )
 
-// Save writes body to a new prefix-named file under the system temp directory and returns its path.
-func Save(prefix string, body []byte) string {
+// Local saves each reply under the system temp directory.
+func Local() Saver { return Saver{mode: modeLocal} }
+
+// Disabled saves nothing, so messages can point only to OpenRouter's own
+// record of the generation.
+func Disabled() Saver { return Saver{mode: modeDisabled} }
+
+func (s Saver) IsZero() bool { return s.mode == modeUnset }
+
+// Describe returns the phrase a message uses in place of body: where it was
+// saved or, when saving is disabled, the generation id to fetch it by, if any.
+func (s Saver) Describe(generationID, prefix string, body []byte) string {
+	switch s.mode {
+	case modeLocal:
+		return "body saved to " + save(prefix, body)
+	case modeDisabled:
+		if generationID == "" {
+			return "body not saved (reply files disabled; no generation id)"
+		}
+		return fmt.Sprintf("body not saved (reply files disabled); OpenRouter generation id %s", generationID)
+	}
+	panic("replyfile: Saver is unset")
+}
+
+// save writes body to a new prefix-named file under the system temp directory and returns its path.
+func save(prefix string, body []byte) string {
 	dir := filepath.Join(os.TempDir(), "openrouterclient")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		panic(fmt.Sprintf("replyfile: create %s: %v", dir, err))

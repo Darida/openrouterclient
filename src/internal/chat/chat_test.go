@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -14,7 +15,7 @@ func TestChatParseResponse_whenContentNotJSON_thenErrors(t *testing.T) {
 	body := []byte(`{"model":"m/free","choices":[{"message":{"content":"not json"}}]}`)
 
 	// Act
-	_, err := ParseResponse(body)
+	_, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
 	if err == nil {
@@ -27,7 +28,7 @@ func TestChatParseResponse_whenContentIsJSON_thenReturnsIt(t *testing.T) {
 	body := []byte(`{"model":"m/free","choices":[{"message":{"content":"{\"a\":1}"}}]}`)
 
 	// Act
-	got, err := ParseResponse(body)
+	got, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
 	if err != nil || string(got) != `{"a":1}` {
@@ -66,7 +67,7 @@ func TestChatParseResponse_whenBodyCarriesProviderError_thenReturnsProviderError
 	body := []byte(`{"id":"gen-1","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
 
 	// Act
-	_, err := ParseResponse(body)
+	_, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
 	var providerErr *ProviderError
@@ -84,12 +85,12 @@ func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
 	}()
 
 	// Act
-	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"))
+	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"), replyfile.Disabled(), "gen-1")
 }
 
 func TestProviderErrorError_whenMetadataHasRaw_thenUsesItsFirstSentence(t *testing.T) {
 	// Arrange
-	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`))
+	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`), replyfile.Disabled(), "gen-1")
 
 	// Act
 	got := providerErr.Error()

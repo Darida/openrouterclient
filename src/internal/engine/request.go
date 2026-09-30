@@ -13,7 +13,6 @@ import (
 	"github.com/Darida/openrouterclient/src/internal/chat"
 	"github.com/Darida/openrouterclient/src/internal/hedge"
 	"github.com/Darida/openrouterclient/src/internal/history"
-	"github.com/Darida/openrouterclient/src/internal/replyfile"
 )
 
 // A model or provider that can't serve this particular request answers with
@@ -77,17 +76,17 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		providerErr := chat.ParseErrorBody(body)
+		providerErr := chat.ParseErrorBody(body, e.replies, generationID)
 		if refusalStatuses[resp.StatusCode] {
-			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: body saved to %s", resp.StatusCode, replyfile.Save("refused", body))), false, false
+			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, e.replies.Describe(generationID, "refused", body))), false, false
 		}
 		if !retryableStatuses[resp.StatusCode] {
-			panic(fmt.Sprintf("engine: chat request returned HTTP %d: body saved to %s", resp.StatusCode, replyfile.Save("unexpected-status", body)))
+			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, e.replies.Describe(generationID, "unexpected-status", body)))
 		}
 		return e.failed(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false, false
 	}
 	if generationID == "" {
-		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — body saved to %s", replyfile.Save("no-generation-id", body)))
+		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — %s", e.replies.Describe("", "no-generation-id", body)))
 	}
 
 	return e.classifyOK(ctx, modelID, start, generationID, body, validate)
@@ -96,7 +95,7 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 // classifyOK sorts a 200 body into success, invalid output, a rate limit, or
 // a rejection to resend (see sendOnce).
 func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time, generationID string, body []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
-	content, err := chat.ParseResponse(body)
+	content, err := chat.ParseResponse(body, e.replies, generationID)
 	var providerErr *chat.ProviderError
 	if errors.As(err, &providerErr) {
 		if providerErr.Code == http.StatusTooManyRequests {
@@ -109,7 +108,7 @@ func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time
 	}
 	result = attempt{model: modelID, generationID: generationID, content: content, latency: time.Since(start)}
 	if err != nil {
-		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, fmt.Sprintf("%v — body saved to %s", err, replyfile.Save(generationID, body))
+		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, fmt.Sprintf("%v — %s", err, e.replies.Describe(generationID, generationID, body))
 		return result, false, false
 	}
 	result.outcome = history.OutcomeSuccess

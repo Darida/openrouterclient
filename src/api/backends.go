@@ -1,0 +1,41 @@
+package api
+
+import (
+	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
+)
+
+// LocalHistory keeps outcomes in a JSON file at path, created if absent, and
+// uses them to exclude models that fail too often. The file must persist
+// across runs, or exclusion never learns anything. It panics if path is
+// empty, or if an existing file there is unreadable or malformed.
+func LocalHistory(path string) History {
+	if path == "" {
+		panic("openrouterclient: LocalHistory needs a path")
+	}
+	return History{store: history.Open(path)}
+}
+
+// DisabledHistory records nothing and excludes no model, so every call picks
+// from all candidates regardless of past failures, and rating is impossible.
+func DisabledHistory() History {
+	return History{store: history.Disabled{}}
+}
+
+// LocalReplies saves each raw reply to its own file under
+// openrouterclient/ in the system temp directory, and messages name that file.
+func LocalReplies() Replies {
+	return Replies{saver: replyfile.Local()}
+}
+
+// DisabledReplies saves nothing. Messages name the reply's OpenRouter
+// generation id instead, when it has one, so the reply can be looked up on
+// OpenRouter; otherwise they say only that it was not saved.
+func DisabledReplies() Replies {
+	return Replies{saver: replyfile.Disabled()}
+}
+
+func (h History) isDisabled() bool {
+	_, disabled := h.store.(history.Disabled)
+	return disabled
+}
