@@ -21,7 +21,7 @@ func NewRater(h History) (Rater, error) {
 	if h.store == nil {
 		return nil, errors.New("openrouterclient: NewRater needs a History")
 	}
-	if h.isDisabled() {
+	if h.disabled {
 		return nil, errors.New("openrouterclient: NewRater needs history, which is disabled")
 	}
 	return &rater{store: h.store}, nil

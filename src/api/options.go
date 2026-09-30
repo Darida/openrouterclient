@@ -9,6 +9,8 @@ import (
 // LocalHistory or DisabledHistory; the zero value is invalid.
 type History struct {
 	store history.History
+	// Lets NewRater refuse up front instead of on the first Rate.
+	disabled bool
 }
 
 // Replies says where raw OpenRouter replies go, so logs, errors, and panics

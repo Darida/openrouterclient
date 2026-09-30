@@ -2,7 +2,7 @@ package api
 
 import "testing"
 
-func TestNewRater_whenHistoryUnset_thenErrors(t *testing.T) {
+func TestAPINewRater_whenHistoryUnset_thenErrors(t *testing.T) {
 	// Act
 	_, err := NewRater(History{})
 
@@ -12,7 +12,7 @@ func TestNewRater_whenHistoryUnset_thenErrors(t *testing.T) {
 	}
 }
 
-func TestNewRater_whenHistoryDisabled_thenErrors(t *testing.T) {
+func TestAPINewRater_whenHistoryDisabled_thenErrors(t *testing.T) {
 	// Act
 	_, err := NewRater(DisabledHistory())
 

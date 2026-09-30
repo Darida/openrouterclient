@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNew_whenRepliesUnset_thenErrors(t *testing.T) {
+func TestAPINew_whenRepliesUnset_thenErrors(t *testing.T) {
 	// Arrange
 	cfg := Config{APIKey: "key", History: DisabledHistory(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
@@ -19,7 +19,7 @@ func TestNew_whenRepliesUnset_thenErrors(t *testing.T) {
 	}
 }
 
-func TestNew_whenHistoryUnset_thenErrors(t *testing.T) {
+func TestAPINew_whenHistoryUnset_thenErrors(t *testing.T) {
 	// Arrange
 	cfg := Config{APIKey: "key", Replies: DisabledReplies(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
@@ -32,7 +32,7 @@ func TestNew_whenHistoryUnset_thenErrors(t *testing.T) {
 	}
 }
 
-func TestNew_whenHistoryAndRepliesDisabled_thenBuildsClient(t *testing.T) {
+func TestAPINew_whenHistoryAndRepliesDisabled_thenBuildsClient(t *testing.T) {
 	// Arrange
 	cfg := Config{APIKey: "key", History: DisabledHistory(), Replies: DisabledReplies(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 

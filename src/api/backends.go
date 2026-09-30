@@ -19,7 +19,7 @@ func LocalHistory(path string) History {
 // DisabledHistory records nothing and excludes no model, so every call picks
 // from all candidates regardless of past failures, and rating is impossible.
 func DisabledHistory() History {
-	return History{store: history.Disabled{}}
+	return History{store: history.Disabled{}, disabled: true}
 }
 
 // LocalReplies saves each raw reply to its own file under
@@ -33,9 +33,4 @@ func LocalReplies() Replies {
 // OpenRouter; otherwise they say only that it was not saved.
 func DisabledReplies() Replies {
 	return Replies{saver: replyfile.Disabled()}
-}
-
-func (h History) isDisabled() bool {
-	_, disabled := h.store.(history.Disabled)
-	return disabled
 }

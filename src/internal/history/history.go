@@ -6,8 +6,7 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-// History is where generation outcomes go and exclusions come from: a
-// file-backed *Store, or Disabled.
+// History records generation outcomes and derives model exclusions from them.
 type History interface {
 	Append(entry Entry)
 	Exclusions(now time.Time, tag string) Exclusions
