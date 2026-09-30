@@ -99,6 +99,13 @@ func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality,
 	return e.history.RecordManual(generationID, q, reason, time.Now())
 }
 
+// CandidateModels lists the models a first generation attempt for req would
+// pick from, applying every filter GenerateText does, without sending a chat request.
+func (e *Engine) CandidateModels(req model.TextGenerationRequirements) []string {
+	validateRequirements(req)
+	return e.candidateModels(req.ModelTier, req.Tag, req.ExcludedModels, promptTokens([]chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema), maxOutputTokens(req))
+}
+
 // runRound generates from messages and reviews the winner. It returns false
 // when either the generation or the review had no winner.
 func (e *Engine) runRound(ctx context.Context, req model.TextGenerationRequirements, outputValidator *schema.Validator, messages []chat.Message, round, maxRounds int) (reviewedRound, []model.FailedAttempt, bool) {

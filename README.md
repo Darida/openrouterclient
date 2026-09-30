@@ -80,7 +80,9 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/` is the command-line program behind `bin/generate.sh`.
+- `src/cmd/generate/` and `src/cmd/models/` are the command-line programs
+  behind `bin/generate.sh` and `bin/models.sh`; `src/cmd/internal/` holds
+  what they share, such as reading the requirements file.
 
 ## Behavior
 
@@ -156,6 +158,17 @@ result low with the reason "human rejected output", and one rates its
 review low with the reason "human rejected review". If every attempt
 fails, it logs a "human rejected review" command for each round's review
 and then prints the failed attempts on stderr and exits 1.
+
+```sh
+bin/models.sh --tag=bakery [--paid] bin/example-requirements.json
+```
+
+`bin/models.sh` takes the same requirements file and prints, one per line,
+the models a first generation attempt would pick from: the tier's
+structured-output models that fit the request's context, minus the
+history's exclusions for `--tag` and the file's `excludedModels`, narrowed
+to the cheapest pool with `--paid`. It sends no chat request and needs no
+API key, since the model catalog is public.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
