@@ -1,4 +1,4 @@
-package main
+package requirementsfile
 
 import (
 	"encoding/json"

@@ -685,6 +685,39 @@ func TestEngineGenerateText_whenCheapestModelExcluded_thenReviewerNeverAsksIt(t 
 	}
 }
 
+func TestEngineCandidateModels_whenCheapestModelExcluded_thenListsNextCheapest(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := requirements
+	paid.ModelTier = model.ModelTierPaid
+	paid.ExcludedModels = []string{"cheap/model"}
+
+	// Act
+	candidates := engine.CandidateModels(paid)
+
+	// Assert
+	if !reflect.DeepEqual(candidates, []string{"pricey/model"}) {
+		t.Fatalf("candidates=%v; want [pricey/model]", candidates)
+	}
+}
+
+func TestEngineCandidateModels_whenListing_thenSendsNoChatRequest(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	engine.CandidateModels(requirements)
+
+	// Assert
+	if len(fake.generations)+len(fake.reviews) != 0 {
+		t.Fatalf("generations=%+v reviews=%+v; want no chat requests", fake.generations, fake.reviews)
+	}
+}
+
 func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenPanics(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
