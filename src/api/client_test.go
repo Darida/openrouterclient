@@ -37,10 +37,10 @@ func TestAPINew_whenHistoryAndRepliesDisabled_thenBuildsClient(t *testing.T) {
 	cfg := Config{APIKey: "key", History: DisabledHistory(), Replies: DisabledReplies(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
 	// Act
-	_, err := New(cfg)
+	client, err := New(cfg)
 
 	// Assert
-	if err != nil {
-		t.Fatalf("New: %v", err)
+	if err != nil || client == nil {
+		t.Fatalf("New = %v, %v; want a client", client, err)
 	}
 }

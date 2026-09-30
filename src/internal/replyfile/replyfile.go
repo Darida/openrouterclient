@@ -32,7 +32,6 @@ func (s Saver) Describe(generationID, prefix string, body []byte) string {
 	panic("replyfile: Saver is unset")
 }
 
-// save writes body to a new prefix-named file under the system temp directory and returns its path.
 func save(prefix string, body []byte) string {
 	dir := filepath.Join(os.TempDir(), "openrouterclient")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
