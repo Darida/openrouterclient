@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
@@ -25,7 +26,7 @@ func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
 		w.Write([]byte(catalogBody))
 	}))
 	t.Cleanup(server.Close)
-	return &Catalog{URL: server.URL, HTTP: server.Client()}, &fetches
+	return &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}, &fetches
 }
 
 func candidateIDs(models []Model) []string {
@@ -82,7 +83,7 @@ func TestCatalogCandidates_whenContextLengthMissing_thenPanics(t *testing.T) {
 		w.Write([]byte(`{"data":[{"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}]}`))
 	}))
 	t.Cleanup(server.Close)
-	c := &Catalog{URL: server.URL, HTTP: server.Client()}
+	c := &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}
 	defer func() {
 		// Assert
 		if recover() == nil {

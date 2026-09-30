@@ -16,16 +16,19 @@ type Rater interface {
 	Rate(ctx context.Context, generationID string, quality model.Quality, reason string) error
 }
 
-// NewRater panics if an existing historyPath file is unreadable or malformed.
-func NewRater(historyPath string) (Rater, error) {
-	if historyPath == "" {
-		return nil, errors.New("openrouterclient: historyPath is required")
+// NewRater errors if h is unset or disabled, since there is nowhere to record a rating.
+func NewRater(h History) (Rater, error) {
+	if h.store == nil {
+		return nil, errors.New("openrouterclient: NewRater needs a History")
 	}
-	return &rater{store: history.Open(historyPath)}, nil
+	if h.disabled {
+		return nil, errors.New("openrouterclient: NewRater needs history, which is disabled")
+	}
+	return &rater{store: h.store}, nil
 }
 
 type rater struct {
-	store *history.Store
+	store history.History
 }
 
 func (r *rater) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {

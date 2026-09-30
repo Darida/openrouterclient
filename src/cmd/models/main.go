@@ -10,6 +10,7 @@ import (
 	"github.com/Darida/openrouterclient/src/cmd/internal/requirementsfile"
 	"github.com/Darida/openrouterclient/src/internal/engine"
 	"github.com/Darida/openrouterclient/src/internal/history"
+	"github.com/Darida/openrouterclient/src/internal/replyfile"
 )
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 		requirements.Timeout = api.DefaultTimeout
 	}
 	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", history.Open(*historyPath), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	e := engine.New(engine.Production, "", history.Open(*historyPath), replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	for _, id := range e.CandidateModels(requirements) {
 		fmt.Println(id)
 	}

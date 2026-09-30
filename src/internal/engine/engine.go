@@ -31,20 +31,22 @@ type Engine struct {
 	apiKey   string
 	http     *http.Client
 	catalog  *catalog.Catalog
-	history  *history.Store
+	history  history.History
+	replies  replyfile.Saver
 	logger   *slog.Logger
 	// Stragglers still settling after their race was won.
 	background sync.WaitGroup
 }
 
-func New(settings Settings, apiKey string, store *history.Store, logger *slog.Logger) *Engine {
+func New(settings Settings, apiKey string, store history.History, replies replyfile.Saver, logger *slog.Logger) *Engine {
 	httpClient := &http.Client{}
 	return &Engine{
 		settings: settings,
 		apiKey:   apiKey,
 		http:     httpClient,
-		catalog:  &catalog.Catalog{URL: settings.CatalogURL, HTTP: httpClient},
+		catalog:  &catalog.Catalog{URL: settings.CatalogURL, HTTP: httpClient, Replies: replies},
 		history:  store,
+		replies:  replies,
 		logger:   logger,
 	}
 }
@@ -74,7 +76,7 @@ func (e *Engine) GenerateText(ctx context.Context, req model.TextGenerationRequi
 		if !quality.Below(result.quality, req.TargetQuality) {
 			return result.generatedText(), nil
 		}
-		failures = append(failures, result.rejection(replyfile.Save(result.gen.generationID, result.gen.content), replyfile.Save(result.rev.generationID, result.rev.content)))
+		failures = append(failures, result.rejection(e.replies.Describe(result.gen.generationID, result.gen.generationID, result.gen.content), e.replies.Describe(result.rev.generationID, result.rev.generationID, result.rev.content)))
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Violations))}
 	}
 	return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}

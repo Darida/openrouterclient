@@ -10,7 +10,7 @@ Each call goes through these steps:
    the request's `ModelTier` that support structured output, minus those
    whose context length can't hold the estimated prompt tokens (chars ÷ 4,
    schema included) plus `MaxOutputTokens`, minus those
-   the local history marks as unreliable, and minus the request's
+   the history marks as unreliable (none when disabled), and minus the request's
    `ExcludedModels` (exact IDs, applied to review too), and sends the prompt to it with a
    strict `json_schema` response format and `MaxOutputTokens` (default
    10,000) as `max_tokens`. For the paid tier, candidates are first
@@ -65,18 +65,20 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 
 - `src/model/` holds data types only, with no logic: the request and
   response types, `ReviewVerdict`, `Quality`, and `AttemptsExhaustedError`.
-- `src/api/` holds the client contract: `Client`, `Config`, and a thin
-  `New` that wires up `src/internal/`.
+- `src/api/` holds the client contract: `Client`, `Config`, the `History`
+  and `Replies` choices, and a thin `New` that wires up `src/internal/`.
 - `src/internal/` holds all behavior, split into these packages:
   - `chat`: builds the wire payload and parses responses.
   - `hedge`: runs staggered parallel attempts.
   - `catalog`: caches OpenRouter's model list and names the candidates.
   - `cost`: estimates a request's cost per model and keeps the cheapest.
-  - `history`: stores outcomes and computes exclusions.
+  - `history`: stores outcomes and computes exclusions, or does nothing
+    when disabled.
   - `review`: holds the fixed review prompt and schema.
   - `quality`: ranks qualities and derives one from a review's total bad score.
   - `schema`: validates output against the requested JSON Schema.
-  - `replyfile`: saves raw replies to files so messages can name them.
+  - `replyfile`: saves raw replies to files so messages can name them, or
+    names the generation id instead when disabled.
   - `engine`: orchestrates the generate, review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
@@ -195,10 +197,14 @@ This library never falls back and never swallows a failure.
   same race won. Any other non-200 status means the request or the key is
   wrong, so it panics.
 - Log lines, error messages, and panics never quote a raw OpenRouter reply.
-  Each reply they refer to is saved in full to its own file under
-  `openrouterclient/` in the system temp directory (`$TMPDIR`, else `/tmp`),
-  and the message names that file. That covers invalid output, refusals, and
-  for a rejected output, both the output and its review.
+  With `Config.Replies` set to `LocalReplies()`, each reply they refer to
+  is saved in full to its own file under `openrouterclient/` in the system
+  temp directory (`$TMPDIR`, else `/tmp`), and the message names that file.
+  With `DisabledReplies()`, nothing is saved: the message names the reply's
+  OpenRouter generation id, to look it up on OpenRouter, or says the body
+  wasn't saved when there is no id (a catalog failure, or a chat response
+  without `X-Generation-Id`). That covers invalid output, refusals, and for a
+  rejected output, both the output and its review.
 - Anything unexpected panics, naming the file with the full raw body. That
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
@@ -209,11 +215,18 @@ This library never falls back and never swallows a failure.
   unreadable or malformed history file. A panic inside a parallel
   attempt crashes the process.
 - `New` returns an error for any missing `Config` field. Every field is
-  required and none has a default.
+  required and none has a default; `History` and `Replies` each name their
+  choice explicitly, local or disabled.
 
-## History file
+## History
 
-`Config.HistoryPath` points to a JSON array with one object per generation
+`Config.History` is either `LocalHistory(path)` or `DisabledHistory()`.
+Disabled history records nothing and excludes no model, so every call picks
+from all candidates regardless of past failures, and `Client.Rate` and
+`NewRater` return an error. Use it where no file outlives the process, such
+as Cloud Run.
+
+`LocalHistory` points to a JSON array with one object per generation
 outcome. Each object holds the timestamp, model, generation id (empty only
 for a `refused` outcome), whether
 the rating was automatic or manual, the quality, the request's target
