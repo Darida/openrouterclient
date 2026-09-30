@@ -31,11 +31,8 @@ const DefaultTimeout = 60 * time.Second
 
 // Every field is required. New returns an error if any is unset.
 type Config struct {
-	APIKey string
-	// Where outcomes that drive model exclusion are kept: LocalHistory or
-	// DisabledHistory.
+	APIKey  string
 	History History
-	// Where raw replies go: LocalReplies or DisabledReplies.
 	Replies Replies
 	Logger  *slog.Logger
 }
