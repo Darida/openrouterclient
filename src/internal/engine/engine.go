@@ -75,23 +75,23 @@ func New(settings Settings, apiKey, tag string, timeout time.Duration, store his
 // Like every public Engine call, its errors are ctx.Err(),
 // *model.AttemptsExhaustedError, and *model.UnexpectedError.
 func (e *Engine) GenerateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, error) {
-	text, err := e.generateReviewed(ctx, req)
-	return text, publicError(ctx, err)
+	text, exhausted, err := e.generateReviewed(ctx, req)
+	return text, publicError(ctx, exhausted, err)
 }
 
 // Generate returns the first schema-valid output. With no review to fail it,
 // it is recorded as high.
 func (e *Engine) Generate(ctx context.Context, req model.GenerateRequest) (model.GeneratedText, error) {
-	text, err := e.generate(ctx, req)
-	return text, publicError(ctx, err)
+	text, exhausted, err := e.generate(ctx, req)
+	return text, publicError(ctx, exhausted, err)
 }
 
 // Review rates caller-supplied content against the criteria. There is no
 // generation in history for its verdict to rate, so only the reviewer's own
 // outcome is recorded.
 func (e *Engine) Review(ctx context.Context, req model.ReviewRequest) (model.Review, error) {
-	rev, err := e.review(ctx, req)
-	return rev, publicError(ctx, err)
+	rev, exhausted, err := e.review(ctx, req)
+	return rev, publicError(ctx, exhausted, err)
 }
 
 func (e *Engine) Rate(ctx context.Context, generationID string, q model.Quality, reason string) error {
@@ -116,13 +116,13 @@ func (e *Engine) Close() error {
 	return e.backgroundErr
 }
 
-func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, error) {
+func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, *model.AttemptsExhaustedError, error) {
 	if err := validateGenerateReviewed(req); err != nil {
-		return model.ReviewedText{}, err
+		return model.ReviewedText{}, nil, err
 	}
 	validate, err := outputValidator(req.OutputSchema)
 	if err != nil {
-		return model.ReviewedText{}, err
+		return model.ReviewedText{}, nil, err
 	}
 	var failures []model.FailedAttempt
 	messages := []chat.Message{chat.UserMessage(req.Prompt)}
@@ -132,89 +132,93 @@ func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewe
 		result, roundFailures, ok, err := e.runRound(ctx, req, validate, messages, round, maxRounds)
 		failures = append(failures, roundFailures...)
 		if err != nil {
-			return model.ReviewedText{}, err
+			return model.ReviewedText{}, nil, err
 		}
 		if err := ctx.Err(); err != nil {
-			return model.ReviewedText{}, err
+			return model.ReviewedText{}, nil, err
 		}
 		if !ok {
-			return model.ReviewedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+			return model.ReviewedText{}, &model.AttemptsExhaustedError{Attempts: failures}, nil
 		}
 		below, err := quality.Below(result.quality, req.TargetQuality)
 		if err != nil {
-			return model.ReviewedText{}, err
+			return model.ReviewedText{}, nil, err
 		}
 		if !below {
-			return result.reviewedText(), nil
+			return result.reviewedText(), nil, nil
 		}
 		rejection, err := e.rejection(result)
 		if err != nil {
-			return model.ReviewedText{}, err
+			return model.ReviewedText{}, nil, err
 		}
 		failures = append(failures, rejection)
 		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Violations))}
 	}
-	return model.ReviewedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+	return model.ReviewedText{}, &model.AttemptsExhaustedError{Attempts: failures}, nil
 }
 
-func (e *Engine) generate(ctx context.Context, req model.GenerateRequest) (model.GeneratedText, error) {
+func (e *Engine) generate(ctx context.Context, req model.GenerateRequest) (model.GeneratedText, *model.AttemptsExhaustedError, error) {
 	if err := validateGenerate(req); err != nil {
-		return model.GeneratedText{}, err
+		return model.GeneratedText{}, nil, err
 	}
 	validate, err := outputValidator(req.OutputSchema)
 	if err != nil {
-		return model.GeneratedText{}, err
+		return model.GeneratedText{}, nil, err
 	}
 	e.logger.Info("openrouter: generating without review")
 	label := e.generatorLabel(req.TargetQuality)
 	gen, failures, ok, err := e.hedge(ctx, race{label: label, models: req.Models, messages: []chat.Message{chat.UserMessage(req.Prompt)}, schema: req.OutputSchema, validate: validate, maxTokens: maxOutputTokens(req.MaxOutputTokens)})
 	if err != nil {
-		return model.GeneratedText{}, err
+		return model.GeneratedText{}, nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return model.GeneratedText{}, err
+		return model.GeneratedText{}, nil, err
 	}
 	if !ok {
-		return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}
+		return model.GeneratedText{}, &model.AttemptsExhaustedError{Attempts: failures}, nil
 	}
 	if err := e.append(entryFields(gen, label, model.QualityHigh, "no review; assumed high")); err != nil {
-		return model.GeneratedText{}, err
+		return model.GeneratedText{}, nil, err
 	}
-	return gen.generatedText(), nil
+	return gen.generatedText(), nil, nil
 }
 
-func (e *Engine) review(ctx context.Context, req model.ReviewRequest) (model.Review, error) {
+func (e *Engine) review(ctx context.Context, req model.ReviewRequest) (model.Review, *model.AttemptsExhaustedError, error) {
 	if err := validateReview(req); err != nil {
-		return model.Review{}, err
+		return model.Review{}, nil, err
 	}
 	e.logger.Info("openrouter: reviewing supplied content")
 	rev, failures, ok, err := e.hedge(ctx, e.reviewRace(req.Task, req.Content, req.Criteria, req.Models, req.MaxOutputTokens, ""))
 	if err != nil {
-		return model.Review{}, err
+		return model.Review{}, nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return model.Review{}, err
+		return model.Review{}, nil, err
 	}
 	if !ok {
-		return model.Review{}, &model.AttemptsExhaustedError{Attempts: failures}
+		return model.Review{}, &model.AttemptsExhaustedError{Attempts: failures}, nil
 	}
 	verdict, err := review.Parse(rev.content)
 	if err != nil {
-		return model.Review{}, err
+		return model.Review{}, nil, err
 	}
 	rated := quality.FromBadScore(verdict.TotalBadScore, req.Criteria.ToleranceThreshold)
 	e.logger.Info("openrouter: reviewed", "reviewer", rev.model, "quality", rated, "violations", len(verdict.Violations), "badScore", verdict.TotalBadScore, "threshold", req.Criteria.ToleranceThreshold)
-	return model.Review{Verdict: verdict, Quality: rated, Model: rev.model, GenerationID: rev.generationID}, nil
+	return model.Review{Verdict: verdict, Quality: rated, Model: rev.model, GenerationID: rev.generationID}, nil, nil
 }
 
-// publicError passes ctx's own error and AttemptsExhaustedError through and
-// marks anything else unexpected.
-func publicError(ctx context.Context, err error) error {
-	var exhausted *model.AttemptsExhaustedError
-	if err == nil || errors.As(err, &exhausted) || err == ctx.Err() {
+// publicError passes exhausted and ctx's own error through and marks any
+// other err unexpected.
+func publicError(ctx context.Context, exhausted *model.AttemptsExhaustedError, err error) error {
+	switch {
+	case err != nil && err == ctx.Err():
 		return err
+	case err != nil:
+		return &model.UnexpectedError{Err: err}
+	case exhausted != nil:
+		return exhausted
 	}
-	return &model.UnexpectedError{Err: err}
+	return nil
 }
 
 func outputValidator(outputSchema model.JSONSchema) (validator, error) {
