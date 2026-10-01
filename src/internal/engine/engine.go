@@ -426,9 +426,8 @@ func entryFields(a attempt, label raceLabel, q model.Quality, reason string) his
 }
 
 // candidateModels takes the selection's models, drops those whose context
-// can't hold the request, then those history excludes, then for the paid
-// tier keeps only the cheapest by estimated cost. It errors when nothing is
-// left to ask.
+// can't hold the request, then those history excludes, then keeps only the
+// cheapest by estimated cost. It errors when nothing is left to ask.
 func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTokens, maxTokens int) ([]string, error) {
 	available, err := e.selectionPool(sel)
 	if err != nil {
@@ -460,14 +459,12 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 	if len(models) == 0 {
 		return nil, fmt.Errorf("engine: history excludes every structured-output model of selection %+v with enough context: %v", sel, excluded)
 	}
-	if sel.Tier == model.ModelTierPaid {
-		pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens)
-		if err != nil {
-			return nil, err
-		}
-		e.logger.Info("openrouter: paid pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
-		models = pool
+	pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens)
+	if err != nil {
+		return nil, err
 	}
+	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
+	models = pool
 	ids := make([]string, len(models))
 	for i, m := range models {
 		ids[i] = m.ID
