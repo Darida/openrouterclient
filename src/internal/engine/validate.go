@@ -69,8 +69,8 @@ func validateSelection(field string, sel model.ModelSelection) error {
 			set++
 		}
 	}
-	if set != 1 {
-		return fmt.Errorf("engine: %s must set exactly one of Tier, Allowed, and Denied, got %+v", field, sel)
+	if set > 1 {
+		return fmt.Errorf("engine: %s must set at most one of Tier, Allowed, and Denied, got %+v", field, sel)
 	}
 	if sel.Tier != "" && sel.Tier != model.ModelTierFree && sel.Tier != model.ModelTierPaid {
 		return fmt.Errorf("engine: %s.Tier must be free or paid, got %q", field, sel.Tier)

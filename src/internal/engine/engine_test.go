@@ -854,13 +854,20 @@ func TestEngineValidateSelection_whenTierAndDeniedBothSet_thenErrors(t *testing.
 	}
 }
 
-func TestEngineValidateSelection_whenNothingSet_thenErrors(t *testing.T) {
+func TestEngineCandidateModels_whenSelectionEmpty_thenListsEveryModelThatFits(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	everyModel := unreviewed
+	everyModel.Models = model.ModelSelection{}
+
 	// Act
-	err := validateSelection("Models", model.ModelSelection{})
+	candidates, err := engine.CandidateModels(everyModel)
 
 	// Assert
-	if err == nil {
-		t.Fatal("expected an error")
+	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel, "cheap/model", "pricey/model"}) {
+		t.Fatalf("candidates=%v, %v; want [%s cheap/model pricey/model]", candidates, err, pickedModel)
 	}
 }
 

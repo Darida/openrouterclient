@@ -18,7 +18,6 @@ func main() {
 	historyPath := flag.String("history", "", "history JSON file (required)")
 	tag := flag.String("tag", "", "history tag for this request (required)")
 	rateScript := flag.String("rate-script", "", "path to bin/rate.sh, for the logged rating command (required)")
-	paid := flag.Bool("paid", false, "use the cheapest paid models instead of free ones")
 	flag.Parse()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if *inputPath == "" || *historyPath == "" || *tag == "" || *rateScript == "" || apiKey == "" {
@@ -42,7 +41,7 @@ func main() {
 		fail(err.Error())
 	}
 
-	request, err := requirementsfile.Read(*inputPath, requirementsfile.Tier(*paid))
+	request, err := requirementsfile.Read(*inputPath)
 	if err != nil {
 		fail(err.Error())
 	}
