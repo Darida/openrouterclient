@@ -19,6 +19,8 @@ import (
 const (
 	fetchTimeout = 30 * time.Second
 	cacheTTL     = time.Hour
+	// OpenRouter lists routers, which aren't models, at this placeholder price.
+	routerPrice = "-1"
 )
 
 // Catalog is OpenRouter's model list, fetched at most once per cacheTTL.
@@ -31,11 +33,12 @@ type Catalog struct {
 	mu        sync.Mutex
 	fetchedAt time.Time
 	models    []entry
+	body      []byte
 }
 
-// Candidates lists tier's models that support strict json_schema output. It
-// panics on a candidate whose price is negative or unparseable, or whose
-// context length is missing.
+// Candidates lists tier's models that support strict json_schema output,
+// skipping routers. It panics on a candidate whose price is negative or
+// unparseable, or whose context length is missing.
 func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -44,18 +47,19 @@ func (c *Catalog) Candidates(tier model.ModelTier) []Model {
 	}
 	var candidates []Model
 	for _, m := range c.models {
-		if inTier(m.ID, tier) && !isBatchOnly(m.ID) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
-			candidates = append(candidates, Model{ID: m.ID, ContextTokens: contextTokens(m), PromptUSDPerToken: price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: price(m.ID, "completion", m.Pricing.Completion)})
+		if inTier(m.ID, tier) && !isBatchOnly(m.ID) && !isRouter(m) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
+			candidates = append(candidates, Model{ID: m.ID, ContextTokens: c.contextTokens(m), PromptUSDPerToken: c.price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: c.price(m.ID, "completion", m.Pricing.Completion)})
 		}
 	}
 	return candidates
 }
 
 func (c *Catalog) refresh() {
-	c.models, c.fetchedAt = c.fetch(), time.Now()
+	c.body = c.fetch()
+	c.models, c.fetchedAt = c.parse(c.body), time.Now()
 }
 
-func (c *Catalog) fetch() []entry {
+func (c *Catalog) fetch() []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
@@ -74,6 +78,10 @@ func (c *Catalog) fetch() []entry {
 	if resp.StatusCode != http.StatusOK {
 		panic(fmt.Sprintf("catalog: %s returned HTTP %d: %s", c.URL, resp.StatusCode, c.Replies.Describe("", "catalog", body)))
 	}
+	return body
+}
+
+func (c *Catalog) parse(body []byte) []entry {
 	var parsed struct {
 		Data []entry `json:"data"`
 	}
@@ -82,14 +90,13 @@ func (c *Catalog) fetch() []entry {
 	}
 	for _, m := range parsed.Data {
 		if m.ID == "" {
-			panic(fmt.Sprintf("catalog: model entry without id: %+v", m))
+			panic(fmt.Sprintf("catalog: model entry without id: %s", c.Replies.Describe("", "catalog", body)))
 		}
 	}
 	return parsed.Data
 }
 
-// OpenRouter's own "openrouter/…" entries are routers, not models, and list
-// placeholder prices such as -1.
+// OpenRouter's own "openrouter/…" entries are routers, not models.
 func inTier(id string, tier model.ModelTier) bool {
 	free := strings.HasSuffix(id, ":free")
 	switch tier {
@@ -101,22 +108,26 @@ func inTier(id string, tier model.ModelTier) bool {
 	panic(fmt.Sprintf("catalog: unknown model tier %q", tier))
 }
 
+func isRouter(m entry) bool {
+	return m.Pricing.Prompt == routerPrice || m.Pricing.Completion == routerPrice
+}
+
 // A ":batch" variant rejects the chat/completions endpoint with a 404.
 func isBatchOnly(id string) bool {
 	return strings.HasSuffix(id, ":batch")
 }
 
-func contextTokens(m entry) int {
+func (c *Catalog) contextTokens(m entry) int {
 	if m.ContextLength <= 0 {
-		panic(fmt.Sprintf("catalog: model %q has no context length: %+v", m.ID, m))
+		panic(fmt.Sprintf("catalog: model %q has no context length: %s", m.ID, c.Replies.Describe("", "catalog", c.body)))
 	}
 	return m.ContextLength
 }
 
-func price(id, kind, raw string) float64 {
+func (c *Catalog) price(id, kind, raw string) float64 {
 	usd, err := strconv.ParseFloat(raw, 64)
 	if err != nil || usd < 0 {
-		panic(fmt.Sprintf("catalog: model %q has an invalid %s price %q", id, kind, raw))
+		panic(fmt.Sprintf("catalog: model %q has an invalid %s price %q: %s", id, kind, raw, c.Replies.Describe("", "catalog", c.body)))
 	}
 	return usd
 }

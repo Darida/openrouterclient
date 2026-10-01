@@ -17,7 +17,9 @@ Each call goes through these steps:
    narrowed to the cheapest: each is priced as prompt chars ÷ 4 × prompt
    price plus `MaxOutputTokens` × completion price, and only those at most
    10% above the 30th-percentile estimate remain. The model list comes from
-   OpenRouter's catalog, cached in memory for an hour.
+   OpenRouter's catalog, cached in memory for an hour. Catalog entries
+   priced at exactly `-1` (prompt or completion) are routers, not models,
+   and are never candidates; any other negative or unparseable price panics.
 2. **Review.** A separate request asks a model to review the output as
    someone else's work, never as its own reply. A fixed system prompt
    casts it as a skeptical senior reviewer checking a junior's work and
@@ -209,7 +211,7 @@ This library never falls back and never swallows a failure.
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context
-  length, or leaves no candidate after the context-length filter and
+  length or with an invalid price, or leaves no candidate after the context-length filter and
   exclusions, an `ExcludedModels` ID that isn't a structured-output model
   of the request's tier in the catalog, an invalid `OutputSchema`, `TargetQuality`, `ReviewToleranceThreshold`, or `Tag`, and an
   unreadable or malformed history file. A panic inside a parallel
