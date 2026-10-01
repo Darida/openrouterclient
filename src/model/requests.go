@@ -14,8 +14,7 @@ type JSONSchema struct {
 
 // GenerateRequest asks for one generation with no review.
 type GenerateRequest struct {
-	// Optional. Sent as the generation's system message ahead of Prompt; empty
-	// sends none.
+	// Optional system message sent ahead of Prompt; empty sends none.
 	SystemPrompt string
 	Prompt       string
 	// The shape Prompt's output must match. Output that doesn't is a failed
@@ -48,9 +47,8 @@ type ReviewRequest struct {
 // GenerateReviewedRequest asks for a generation, reviews it, and corrects it
 // until it meets TargetQuality.
 type GenerateReviewedRequest struct {
-	// Optional. Sent as the generation's system message ahead of Prompt; empty
-	// sends none. Never shown to a reviewer, whose task is
-	// Prompt alone.
+	// Optional system message sent ahead of Prompt; empty sends none. Never
+	// shown to the reviewer, whose task is Prompt alone.
 	SystemPrompt string
 	Prompt       string
 	// The shape Prompt's output must match. Output that doesn't is a failed
