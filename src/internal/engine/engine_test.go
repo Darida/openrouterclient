@@ -1196,7 +1196,7 @@ func TestEngineGenerateReviewed_whenRepliesDisabledAndRoundBelowTarget_thenReaso
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
-	engine := New(settings, "key", history.Disabled{}, replyfile.Disabled(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	engine := New(settings, "key", testTag, testTimeout, history.Disabled{}, replyfile.Disabled(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() {
 		if err := engine.Close(); err != nil {
 			t.Error(err)
