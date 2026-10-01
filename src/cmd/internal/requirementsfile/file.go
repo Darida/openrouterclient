@@ -15,4 +15,6 @@ type requirementsFile struct {
 	TargetQuality model.Quality `json:"targetQuality"`
 	// Optional; 0 or absent means model.DefaultMaxOutputTokens.
 	MaxOutputTokens int `json:"maxOutputTokens"`
+	// Optional; exact model IDs never asked. Absent means none.
+	ExcludedModels []string `json:"excludedModels"`
 }

@@ -59,8 +59,9 @@ steps 1 to 3. All three track outcomes as in step 4.
 
 ## Model selection
 
-A `ModelSelection` sets exactly one of its fields; setting none or more
-than one is an error.
+A `ModelSelection` sets at most one of its fields; setting more than one is
+an error. Setting none, like an empty `Denied`, means every structured-output
+model, free and paid, with no cost cut.
 
 - `Tier`: the free (`:free`) or paid structured-output models. For the
   paid tier, candidates are narrowed to the cheapest last: each is priced
@@ -102,9 +103,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
     review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/` and `src/cmd/models/` are the command-line programs
-  behind `bin/generate.sh` and `bin/models.sh`; `src/cmd/internal/` holds
-  what they share, such as reading the requirements file.
+- `src/cmd/generate/`, `src/cmd/models/`, and `src/cmd/rate/` are the
+  command-line programs behind `bin/generate.sh`, `bin/models.sh`, and
+  `bin/rate.sh`; `src/cmd/internal/` holds the requirements-file reader
+  `bin/generate.sh` uses.
 
 ## Behavior
 
@@ -161,13 +163,16 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 ## Command line
 
 ```sh
-bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery [--paid] bin/example-requirements.json
+bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.json
 ```
 
 The script calls `Client.Generate` only; it never reviews. It takes one
 requirements file with the fields `prompt`, `outputSchema` (`name` and
-`schema`), `targetQuality`, and optionally `maxOutputTokens`. It selects
-models by tier: free by default, the cheapest paid ones with `--paid`. See
+`schema`), `targetQuality`, and optionally `maxOutputTokens` and
+`excludedModels` (exact model IDs never asked). It picks from every
+structured-output model, free and paid, minus `excludedModels`, with no cost
+cut. The script drops an empty `outputValidationRules` before reading the
+file; a non-empty one is an unknown field, since the script never reviews. See
 `bin/example-requirements.json`. The OpenRouter API key is required as
 `--key=...`, and the client's history tag as `--tag=...`. `Config.Timeout`
 is fixed at 60s. History goes to
@@ -180,15 +185,15 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh --tag=bakery [--paid] bin/example-requirements.json
+bin/models.sh
 ```
 
-`bin/models.sh` takes the same requirements file and prints, one per line,
-the models a first `bin/generate.sh` attempt would pick from: the tier's
-structured-output models that fit the request's context, minus the
-history's exclusions for `--tag` + `-generate`, narrowed to the cheapest
-pool with `--paid`. It sends no chat request and needs no
-API key, since the model catalog is public.
+`bin/models.sh` takes no arguments. It runs the model-selection pipeline
+for a fixed sample request (a one-line prompt with the default
+`MaxOutputTokens`) against each tier and prints the free
+candidates, then the cheapest paid pool, one per line under a `free:` and
+a `paid:` heading. It ignores history, so no model is excluded. It sends
+no chat request and needs no API key, since the model catalog is public.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
@@ -233,7 +238,7 @@ This library never falls back and never swallows a failure.
   length or with an invalid price, or leaves no candidate after the
   context-length filter and exclusions, an `Allowed` or `Denied` ID that
   isn't a structured-output model in the catalog, an invalid request
-  (including a `ModelSelection` that doesn't set exactly one field, an
+  (including a `ModelSelection` that sets more than one field, an
   invalid `OutputSchema`, `TargetQuality`, or `ReviewCriteria`, and
   `ReviewRequest.Content` that isn't JSON), and an unreadable or malformed
   history file. A failure while recording a won
