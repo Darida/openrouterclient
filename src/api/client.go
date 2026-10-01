@@ -10,24 +10,33 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-// Client picks its OpenRouter model internally. Callers never pass or
-// receive a model choice, only learn which model produced a result.
+// Client picks its OpenRouter models internally, within each request's
+// ModelSelection, and only reports which model produced a result. Every call
+// that contacts OpenRouter returns ctx.Err(), *model.AttemptsExhaustedError,
+// or *model.UnexpectedError, and never panics.
 type Client interface {
-	// GenerateText returns only reviewed content. Its errors are ctx.Err() and
-	// *model.AttemptsExhaustedError; anything unexpected panics.
-	GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error)
+	// Generate returns the first schema-valid output, with no review. It is
+	// recorded in history as high, so only a later manual rating can count
+	// it against its model.
+	Generate(ctx context.Context, req model.GenerateRequest) (model.GeneratedText, error)
+	// Review rates content the caller supplies against req.Criteria and
+	// returns the verdict whatever its quality. Only the reviewer's own
+	// outcome is recorded; rating the review's GenerationID low clears no
+	// other rating.
+	Review(ctx context.Context, req model.ReviewRequest) (model.Review, error)
+	// GenerateReviewed generates, reviews, and corrects until the output meets
+	// req.TargetQuality, and returns only output that does.
+	GenerateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, error)
 	// Rate records a manual high/medium/low rating of a generation's or a
 	// review's GenerationID in history. Rating a review low also clears the
 	// automatic rating that review gave. It errors for any other quality, an
 	// unknown or already-rated id, or when history is disabled.
 	Rate(ctx context.Context, generationID string, quality model.Quality, reason string) error
-	// Close blocks until attempts still settling after GenerateText returned
-	// are recorded in history. Call it once, before the process exits.
-	Close()
+	// Close blocks until attempts still settling after a call returned are
+	// recorded in history, and returns a *model.UnexpectedError if recording
+	// any of them failed. Call it once, before the process exits.
+	Close() error
 }
-
-// DefaultTimeout is the timeout for a request whose Timeout is 0.
-const DefaultTimeout = 60 * time.Second
 
 // Every field is required. New returns an error if any is unset.
 type Config struct {
@@ -35,22 +44,35 @@ type Config struct {
 	History History
 	Replies Replies
 	Logger  *slog.Logger
+	// Groups this client's calls in history: generations are recorded under
+	// Tag + "-generate" and reviews under Tag + "-review". When picking
+	// models, a past failure under the same tag counts in full; under another
+	// tag, half.
+	Tag string
+	// How long an attempt may stay pending before the next one starts, and
+	// how long a success may take before it counts against its model. Each
+	// attempt is cut off shortly after. Applies to generation and review
+	// calls alike. Must be positive.
+	Timeout time.Duration
 }
 
 func New(cfg Config) (Client, error) {
-	if cfg.APIKey == "" || cfg.History.store == nil || cfg.Replies.saver.IsZero() || cfg.Logger == nil {
-		return nil, errors.New("openrouterclient: Config.APIKey, Config.History, Config.Replies, and Config.Logger are all required")
+	if cfg.APIKey == "" || cfg.History.store == nil || cfg.Replies.saver.IsZero() || cfg.Logger == nil || cfg.Tag == "" {
+		return nil, errors.New("openrouterclient: Config.APIKey, Config.History, Config.Replies, Config.Logger, and Config.Tag are all required")
 	}
-	return &client{Engine: engine.New(engine.Production, cfg.APIKey, cfg.History.store, cfg.Replies.saver, cfg.Logger)}, nil
+	if cfg.Timeout <= 0 {
+		return nil, errors.New("openrouterclient: Config.Timeout must be positive")
+	}
+	return &client{Engine: engine.New(engine.Production, cfg.APIKey, cfg.Tag, cfg.Timeout, cfg.History.store, cfg.Replies.saver, cfg.Logger)}, nil
 }
 
 type client struct {
 	*engine.Engine
 }
 
-func (c *client) GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error) {
-	if requirements.Timeout == 0 {
-		requirements.Timeout = DefaultTimeout
+func (c *client) Close() error {
+	if err := c.Engine.Close(); err != nil {
+		return &model.UnexpectedError{Err: err}
 	}
-	return c.Engine.GenerateText(ctx, requirements)
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Darida/openrouterclient/src/internal/chat"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -24,6 +25,8 @@ type attempt struct {
 	reason   string
 	// Provider rejections resent within this attempt before it settled.
 	resends int
+	// Something no model causes, such as an undocumented reply; it aborts the race.
+	fatal error
 }
 
 // raceLabel is what every history entry from one race shares.
@@ -32,10 +35,22 @@ type raceLabel struct {
 	// Empty for the reviewer, whose output has no target.
 	target model.Quality
 	tag    string
-	// The request's Timeout, against which history judges a success slow.
+	// The configured Timeout, against which history judges a success slow.
 	timeout time.Duration
-	// Empty for the generator; for the reviewer, the generation it judges.
+	// Empty for the generator and for a review of caller-supplied content;
+	// otherwise the generation the reviewer judges.
 	reviewed string
+}
+
+// race is one hedged chat request: what to send, to which models, and how
+// to judge and record each reply.
+type race struct {
+	label     raceLabel
+	models    model.ModelSelection
+	messages  []chat.Message
+	schema    model.JSONSchema
+	validate  validator
+	maxTokens int
 }
 
 // reviewedRound is one generation plus the automatic review that rated it.
@@ -45,13 +60,19 @@ type reviewedRound struct {
 	quality  model.Quality
 }
 
-func (r reviewedRound) generatedText() model.GeneratedText {
-	return model.GeneratedText{
-		Content:      r.gen.content,
-		Model:        r.gen.model,
-		GenerationID: r.gen.generationID,
-		Review:       r.review(),
+// validator reports whether content is the model's valid output. Only invalid
+// is the model's fault; err aborts the call.
+type validator func(content json.RawMessage) (invalid, err error)
+
+func (r reviewedRound) reviewedText() model.ReviewedText {
+	return model.ReviewedText{
+		GeneratedText: r.gen.generatedText(),
+		Review:        *r.review(),
 	}
+}
+
+func (a attempt) generatedText() model.GeneratedText {
+	return model.GeneratedText{Content: a.content, Model: a.model, GenerationID: a.generationID}
 }
 
 func (r reviewedRound) rejection(output, review string) model.FailedAttempt {

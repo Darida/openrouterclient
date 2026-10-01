@@ -10,7 +10,7 @@ type ReviewVerdict struct {
 }
 
 type ReviewViolation struct {
-	// The rule violated, quoted or named as it appears in OutputValidationRules.
+	// The rule violated, quoted or named as it appears in ReviewCriteria.Rules.
 	Rule string `json:"rule"`
 	// A short excerpt, about five words, that demonstrates the violation: from
 	// the output, or from the task for something the output leaves out.
@@ -19,7 +19,7 @@ type ReviewViolation struct {
 	Explanation string `json:"explanation"`
 	// The specific change that would fix this violation.
 	RecommendedAction string `json:"recommendedAction"`
-	// The bad score Rule states in OutputValidationRules, or 1 if it states none.
+	// The bad score Rule states in ReviewCriteria.Rules, or 1 if it states none.
 	BadScore int `json:"badScore"`
 }
 

@@ -43,7 +43,7 @@ func SystemMessage(content string) Message    { return Message{Role: "system", C
 func UserMessage(content string) Message      { return Message{Role: "user", Content: content} }
 func AssistantMessage(content string) Message { return Message{Role: "assistant", Content: content} }
 
-func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, maxTokens int) []byte {
+func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, maxTokens int) ([]byte, error) {
 	payload := map[string]any{
 		"model":      modelID,
 		"max_tokens": maxTokens,
@@ -56,27 +56,29 @@ func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, m
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		panic(fmt.Sprintf("chat: marshal payload: %v", err))
+		return nil, fmt.Errorf("chat: marshal payload: %w", err)
 	}
-	return body
+	return body, nil
 }
 
-// ParseErrorBody panics on a non-200 body that isn't an OpenRouter error
+// ParseErrorBody errors on a non-200 body that isn't an OpenRouter error
 // object, describing body with replies.
-func ParseErrorBody(body []byte, replies replyfile.Saver, generationID string) *ProviderError {
+func ParseErrorBody(body []byte, replies replyfile.Saver, generationID string) (*ProviderError, error) {
 	var parsed struct {
 		Error *ProviderError `json:"error"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Error == nil || parsed.Error.Message == "" {
-		panic(fmt.Sprintf("chat: error response is not an OpenRouter error object — %s", replies.Describe(generationID, "unexpected-error", body)))
+		described, err := replies.Describe(generationID, "unexpected-error", body)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("chat: error response is not an OpenRouter error object — %s", described)
 	}
-	return parsed.Error
+	return parsed.Error, nil
 }
 
-// ParseResponse returns a *ProviderError for a relayed upstream failure.
-// Otherwise it panics if the body isn't JSON; a missing or non-JSON message
-// content is the model's fault, so it comes back as an error.
-func ParseResponse(body []byte, replies replyfile.Saver, generationID string) (json.RawMessage, error) {
+// ParseResponse errors only if the body isn't JSON, which no model causes.
+func ParseResponse(body []byte, replies replyfile.Saver, generationID string) (Reply, error) {
 	var parsed struct {
 		Error   *ProviderError `json:"error"`
 		Choices []struct {
@@ -85,18 +87,22 @@ func ParseResponse(body []byte, replies replyfile.Saver, generationID string) (j
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		panic(fmt.Sprintf("chat: 200 response body is not JSON: %v — %s", err, replies.Describe(generationID, "unexpected-ok", body)))
+	if unmarshalErr := json.Unmarshal(body, &parsed); unmarshalErr != nil {
+		described, err := replies.Describe(generationID, "unexpected-ok", body)
+		if err != nil {
+			return Reply{}, err
+		}
+		return Reply{}, fmt.Errorf("chat: 200 response body is not JSON: %v — %s", unmarshalErr, described)
 	}
 	if parsed.Error != nil {
-		return nil, parsed.Error
+		return Reply{ProviderError: parsed.Error}, nil
 	}
 	if len(parsed.Choices) == 0 || parsed.Choices[0].Message.Content == "" {
-		return nil, errors.New("response has no message content")
+		return Reply{Invalid: errors.New("response has no message content")}, nil
 	}
 	raw := parsed.Choices[0].Message.Content
 	if !json.Valid([]byte(raw)) {
-		return nil, errors.New("message content is not valid JSON")
+		return Reply{Invalid: errors.New("message content is not valid JSON")}, nil
 	}
-	return json.RawMessage(raw), nil
+	return Reply{Content: json.RawMessage(raw)}, nil
 }

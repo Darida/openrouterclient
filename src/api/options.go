@@ -13,7 +13,7 @@ type History struct {
 	disabled bool
 }
 
-// Replies says where raw OpenRouter replies go, so logs, errors, and panics
+// Replies says where raw OpenRouter replies go, so logs and errors
 // can point to one without quoting it. Build one with LocalReplies or
 // DisabledReplies; the zero value is invalid.
 type Replies struct {

@@ -12,6 +12,19 @@ type AttemptsExhaustedError struct {
 	Attempts []FailedAttempt
 }
 
+// UnexpectedError means the call stopped on something that is neither a
+// model's failure nor the caller's context ending: an invalid request, a
+// reply OpenRouter isn't known to send, or a history file that can't be read
+// or written. Nothing is retried after it. Its message names the file holding
+// any raw reply rather than quoting it.
+type UnexpectedError struct {
+	Err error
+}
+
+func (e *UnexpectedError) Error() string { return "openrouter: unexpected: " + e.Err.Error() }
+
+func (e *UnexpectedError) Unwrap() error { return e.Err }
+
 type FailedAttempt struct {
 	Outcome AttemptOutcome
 	// Empty only when OpenRouter never accepted the request, so there is no

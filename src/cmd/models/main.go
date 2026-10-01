@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Darida/openrouterclient/src/api"
 	"github.com/Darida/openrouterclient/src/cmd/internal/requirementsfile"
 	"github.com/Darida/openrouterclient/src/internal/engine"
 	"github.com/Darida/openrouterclient/src/internal/history"
@@ -23,17 +22,21 @@ func main() {
 		fail("--input, --history, and --tag are all required")
 	}
 
-	requirements, err := requirementsfile.Read(*inputPath, *tag, requirementsfile.Tier(*paid))
+	request, err := requirementsfile.Read(*inputPath, requirementsfile.Tier(*paid))
 	if err != nil {
 		fail(err.Error())
 	}
-	// Mirrors api.Client, so validation sees the same request GenerateText would.
-	if requirements.Timeout == 0 {
-		requirements.Timeout = api.DefaultTimeout
+	store, err := history.Open(*historyPath)
+	if err != nil {
+		fail(err.Error())
 	}
 	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", history.Open(*historyPath), replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	for _, id := range e.CandidateModels(requirements) {
+	e := engine.New(engine.Production, "", *tag, requirementsfile.Timeout, store, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	candidates, err := e.CandidateModels(request)
+	if err != nil {
+		fail(err.Error())
+	}
+	for _, id := range candidates {
 		fmt.Println(id)
 	}
 }

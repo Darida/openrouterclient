@@ -19,8 +19,16 @@ func FromBadScore(total, threshold int) model.Quality {
 	}
 }
 
-func Below(q, target model.Quality) bool {
-	return rank(q) < rank(target)
+func Below(q, target model.Quality) (bool, error) {
+	qRank, err := rank(q)
+	if err != nil {
+		return false, err
+	}
+	targetRank, err := rank(target)
+	if err != nil {
+		return false, err
+	}
+	return qRank < targetRank, nil
 }
 
 // IsRating reports whether q is a quality a review or caller can assign,
@@ -29,16 +37,16 @@ func IsRating(q model.Quality) bool {
 	return q == model.QualityHigh || q == model.QualityMedium || q == model.QualityLow
 }
 
-func rank(q model.Quality) int {
+func rank(q model.Quality) (int, error) {
 	switch q {
 	case model.QualityUnusable:
-		return 0
+		return 0, nil
 	case model.QualityLow:
-		return 1
+		return 1, nil
 	case model.QualityMedium:
-		return 2
+		return 2, nil
 	case model.QualityHigh:
-		return 3
+		return 3, nil
 	}
-	panic(fmt.Sprintf("quality: unknown quality %q", q))
+	return 0, fmt.Errorf("quality: unknown quality %q", q)
 }

@@ -50,10 +50,11 @@ fakes with millisecond timings, because the hook gives the whole test run
 This library exists to fail loudly. Never add a retry, default, fallback
 model, placeholder value (`"unknown"`), swallowed error, or
 best-effort-and-continue path that `README.md` doesn't already describe.
-If an OpenRouter response doesn't match what the code expects, crash with
-the full raw body saved to a file that the message names. Never quote a
-raw reply in a log, error, or panic message. An unexpected shape is a bug to research
-and fix, not a case to paper over.
+If an OpenRouter response doesn't match what the code expects, abort the
+call with a `*model.UnexpectedError` whose message names the file holding
+the full raw body. Never panic: every failure propagates as an error. Never
+quote a raw reply in a log or error message. An unexpected shape is a bug
+to research and fix, not a case to paper over.
 
 ## Tooling gaps never drive design
 

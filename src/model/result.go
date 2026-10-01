@@ -12,7 +12,11 @@ type GeneratedText struct {
 	Model string
 	// OpenRouter's id for this generation, and the handle Client.Rate takes.
 	GenerationID string
-	// The automatic review of Content, whose Quality always meets
-	// TargetQuality. Nil when OutputValidationRules is empty.
-	Review *Review
+}
+
+type ReviewedText struct {
+	GeneratedText
+	// The automatic review of Content, whose Quality always meets the
+	// request's TargetQuality.
+	Review Review
 }

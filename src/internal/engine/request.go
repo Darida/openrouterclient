@@ -3,7 +3,6 @@ package engine
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,19 +34,24 @@ var retryableStatuses = map[int]bool{
 
 // runAttempt resends a request the provider rejected before generating,
 // until something else happens or the attempt's own context ends.
-func (e *Engine) runAttempt(ctx context.Context, modelID string, payload []byte, validate func(json.RawMessage) error) (attempt, bool) {
+func (e *Engine) runAttempt(ctx context.Context, modelID string, payload []byte, validate validator) (attempt, hedge.Verdict) {
 	start := time.Now()
 	for resends := 0; ; resends++ {
 		result, ok, rejected := e.sendOnce(ctx, modelID, start, payload, validate)
 		result.resends = resends
-		if !rejected {
-			return result, ok
+		switch {
+		case result.fatal != nil:
+			return result, hedge.Aborted
+		case ok:
+			return result, hedge.Won
+		case !rejected:
+			return result, hedge.Lost
 		}
 		select {
 		case <-ctx.Done():
 			result = e.failed(ctx, modelID, "", start, "provider kept rejecting the request before generating")
 			result.resends = resends + 1
-			return result, false
+			return result, hedge.Lost
 		case <-time.After(e.settings.RejectionRetryDelay):
 		}
 	}
@@ -56,10 +60,10 @@ func (e *Engine) runAttempt(ctx context.Context, modelID string, payload []byte,
 // rejected reports a 200 whose body is a provider error other than a rate
 // limit. It arrives within a second, before any generation exists, so it's
 // resent instead of blamed on the model.
-func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, payload []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
+func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, payload []byte, validate validator) (result attempt, ok, rejected bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.settings.ChatURL, bytes.NewReader(payload))
 	if err != nil {
-		panic(fmt.Sprintf("engine: build chat request: %v", err))
+		return fatal(modelID, "", fmt.Errorf("engine: build chat request: %w", err)), false, false
 	}
 	req.Header.Set("Authorization", "Bearer "+e.apiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -76,43 +80,77 @@ func (e *Engine) sendOnce(ctx context.Context, modelID string, start time.Time, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		providerErr := chat.ParseErrorBody(body, e.replies, generationID)
-		if refusalStatuses[resp.StatusCode] {
-			return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, e.replies.Describe(generationID, "refused", body))), false, false
-		}
-		if !retryableStatuses[resp.StatusCode] {
-			panic(fmt.Sprintf("engine: chat request returned HTTP %d: %s", resp.StatusCode, e.replies.Describe(generationID, "unexpected-status", body)))
-		}
-		return e.failed(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %v", resp.StatusCode, providerErr)), false, false
+		return e.classifyNotOK(ctx, modelID, start, generationID, resp.StatusCode, body), false, false
 	}
 	if generationID == "" {
-		panic(fmt.Sprintf("engine: 200 chat response has no X-Generation-Id header — %s", e.replies.Describe("", "no-generation-id", body)))
+		described, err := e.replies.Describe("", "no-generation-id", body)
+		if err != nil {
+			return fatal(modelID, "", err), false, false
+		}
+		return fatal(modelID, "", fmt.Errorf("engine: 200 chat response has no X-Generation-Id header — %s", described)), false, false
 	}
 
 	return e.classifyOK(ctx, modelID, start, generationID, body, validate)
 }
 
+// classifyNotOK sorts a non-200 into a refusal, a model failure, or, for a
+// status no model causes, a fatal attempt.
+func (e *Engine) classifyNotOK(ctx context.Context, modelID string, start time.Time, generationID string, status int, body []byte) attempt {
+	providerErr, err := chat.ParseErrorBody(body, e.replies, generationID)
+	if err != nil {
+		return fatal(modelID, generationID, err)
+	}
+	if refusalStatuses[status] {
+		described, err := e.replies.Describe(generationID, "refused", body)
+		if err != nil {
+			return fatal(modelID, generationID, err)
+		}
+		return e.refused(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %s", status, described))
+	}
+	if !retryableStatuses[status] {
+		described, err := e.replies.Describe(generationID, "unexpected-status", body)
+		if err != nil {
+			return fatal(modelID, generationID, err)
+		}
+		return fatal(modelID, generationID, fmt.Errorf("engine: chat request returned HTTP %d: %s", status, described))
+	}
+	return e.failed(ctx, modelID, generationID, start, fmt.Sprintf("HTTP %d: %v", status, providerErr))
+}
+
 // classifyOK sorts a 200 body into success, invalid output, a rate limit, or
 // a rejection to resend (see sendOnce).
-func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time, generationID string, body []byte, validate func(json.RawMessage) error) (result attempt, ok, rejected bool) {
-	content, err := chat.ParseResponse(body, e.replies, generationID)
-	var providerErr *chat.ProviderError
-	if errors.As(err, &providerErr) {
-		if providerErr.Code == http.StatusTooManyRequests {
-			return e.failed(ctx, modelID, generationID, start, providerErr.Error()), false, false
+func (e *Engine) classifyOK(ctx context.Context, modelID string, start time.Time, generationID string, body []byte, validate validator) (result attempt, ok, rejected bool) {
+	reply, err := chat.ParseResponse(body, e.replies, generationID)
+	if err != nil {
+		return fatal(modelID, generationID, err), false, false
+	}
+	if reply.ProviderError != nil {
+		if reply.ProviderError.Code == http.StatusTooManyRequests {
+			return e.failed(ctx, modelID, generationID, start, reply.ProviderError.Error()), false, false
 		}
 		return attempt{}, false, true
 	}
-	if err == nil {
-		err = validate(content)
+	invalid := reply.Invalid
+	if invalid == nil {
+		if invalid, err = validate(reply.Content); err != nil {
+			return fatal(modelID, generationID, err), false, false
+		}
 	}
-	result = attempt{model: modelID, generationID: generationID, content: content, latency: time.Since(start)}
-	if err != nil {
-		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, fmt.Sprintf("%v — %s", err, e.replies.Describe(generationID, generationID, body))
+	result = attempt{model: modelID, generationID: generationID, content: reply.Content, latency: time.Since(start)}
+	if invalid != nil {
+		described, err := e.replies.Describe(generationID, generationID, body)
+		if err != nil {
+			return fatal(modelID, generationID, err), false, false
+		}
+		result.outcome, result.content, result.reason = history.OutcomeInvalidOutput, nil, fmt.Sprintf("%v — %s", invalid, described)
 		return result, false, false
 	}
 	result.outcome = history.OutcomeSuccess
 	return result, true, false
+}
+
+func fatal(modelID, generationID string, err error) attempt {
+	return attempt{model: modelID, generationID: generationID, fatal: err}
 }
 
 // refused names the saved body in the reason, since an all-refused race is

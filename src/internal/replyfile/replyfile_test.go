@@ -11,9 +11,12 @@ func TestSaverDescribe_whenLocal_thenNamedFileHoldsBody(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 
 	// Act
-	described := Local().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`))
+	described, err := Local().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`))
 
 	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := strings.TrimPrefix(described, "body saved to ")
 	got, err := os.ReadFile(path)
 	if err != nil || string(got) != `{"status": "LGTM"` {
@@ -23,10 +26,10 @@ func TestSaverDescribe_whenLocal_thenNamedFileHoldsBody(t *testing.T) {
 
 func TestSaverDescribe_whenDisabled_thenNamesGenerationID(t *testing.T) {
 	// Act
-	described := Disabled().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`))
+	described, err := Disabled().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`))
 
 	// Assert
-	if !strings.Contains(described, "gen-1") {
+	if err != nil || !strings.Contains(described, "gen-1") {
 		t.Fatalf("described = %q, want it to name gen-1", described)
 	}
 }
@@ -37,7 +40,9 @@ func TestSaverDescribe_whenDisabled_thenWritesNoFile(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 
 	// Act
-	Disabled().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`))
+	if _, err := Disabled().Describe("gen-1", "reply", []byte(`{"status": "LGTM"`)); err != nil {
+		t.Fatal(err)
+	}
 
 	// Assert
 	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
@@ -45,14 +50,12 @@ func TestSaverDescribe_whenDisabled_thenWritesNoFile(t *testing.T) {
 	}
 }
 
-func TestSaverDescribe_whenUnset_thenPanics(t *testing.T) {
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
+func TestSaverDescribe_whenUnset_thenErrors(t *testing.T) {
 	// Act
-	Saver{}.Describe("gen-1", "reply", nil)
+	_, err := Saver{}.Describe("gen-1", "reply", nil)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }

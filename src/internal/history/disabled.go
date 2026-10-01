@@ -11,9 +11,9 @@ import (
 // no knowledge of past failures.
 type Disabled struct{}
 
-func (Disabled) Append(Entry) {}
+func (Disabled) Append(Entry) error { return nil }
 
-func (Disabled) Exclusions(time.Time, string) Exclusions { return Exclusions{} }
+func (Disabled) Exclusions(time.Time, string) (Exclusions, error) { return Exclusions{}, nil }
 
 func (Disabled) RecordManual(string, model.Quality, string, time.Time) error {
 	return errors.New("history: rating needs history, which is disabled")

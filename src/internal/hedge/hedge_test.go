@@ -11,7 +11,12 @@ var fastTiming = Timing{MaxAttempts: 3, Stagger: 5 * time.Second, AttemptTimeout
 
 func TestRun_whenFirstAttemptFails_thenSecondLaunchesBeforeStagger(t *testing.T) {
 	// Arrange
-	attempt := func(ctx context.Context, num int) (int, bool) { return num, num == 2 }
+	attempt := func(ctx context.Context, num int) (int, Verdict) {
+		if num == 2 {
+			return num, Won
+		}
+		return num, Lost
+	}
 	start := time.Now()
 
 	// Act
@@ -26,12 +31,12 @@ func TestRun_whenFirstAttemptFails_thenSecondLaunchesBeforeStagger(t *testing.T)
 func TestRun_whenAnotherAttemptWins_thenStragglerRunsToItsOwnTimeout(t *testing.T) {
 	// Arrange
 	timing := Timing{MaxAttempts: 2, Stagger: 20 * time.Millisecond, AttemptTimeout: 100 * time.Millisecond}
-	attempt := func(ctx context.Context, num int) (error, bool) {
+	attempt := func(ctx context.Context, num int) (error, Verdict) {
 		if num == 2 {
-			return nil, true
+			return nil, Won
 		}
 		<-ctx.Done()
-		return context.Cause(ctx), false
+		return context.Cause(ctx), Lost
 	}
 
 	// Act
@@ -46,9 +51,9 @@ func TestRun_whenAnotherAttemptWins_thenStragglerRunsToItsOwnTimeout(t *testing.
 func TestRun_whenAttemptExceedsTimeout_thenItSeesErrTimeout(t *testing.T) {
 	// Arrange
 	timing := Timing{MaxAttempts: 1, Stagger: time.Second, AttemptTimeout: 20 * time.Millisecond}
-	attempt := func(ctx context.Context, num int) (error, bool) {
+	attempt := func(ctx context.Context, num int) (error, Verdict) {
 		<-ctx.Done()
-		return context.Cause(ctx), false
+		return context.Cause(ctx), Lost
 	}
 
 	// Act
@@ -62,7 +67,7 @@ func TestRun_whenAttemptExceedsTimeout_thenItSeesErrTimeout(t *testing.T) {
 
 func TestRun_whenEveryAttemptFails_thenNoWinner(t *testing.T) {
 	// Arrange
-	attempt := func(ctx context.Context, num int) (int, bool) { return num, false }
+	attempt := func(ctx context.Context, num int) (int, Verdict) { return num, Lost }
 
 	// Act
 	race := Run(context.Background(), fastTiming, attempt)
@@ -76,12 +81,12 @@ func TestRun_whenEveryAttemptFails_thenNoWinner(t *testing.T) {
 func TestRun_whenAttemptWinsWhileStragglerRuns_thenReturnsBeforeStragglerSettles(t *testing.T) {
 	// Arrange
 	timing := Timing{MaxAttempts: 2, Stagger: 20 * time.Millisecond, AttemptTimeout: 2 * time.Second}
-	attempt := func(ctx context.Context, num int) (int, bool) {
+	attempt := func(ctx context.Context, num int) (int, Verdict) {
 		if num == 2 {
-			return num, true
+			return num, Won
 		}
 		<-ctx.Done()
-		return num, false
+		return num, Lost
 	}
 	start := time.Now()
 
@@ -91,5 +96,38 @@ func TestRun_whenAttemptWinsWhileStragglerRuns_thenReturnsBeforeStragglerSettles
 	// Assert
 	if winner, won := race.Winner(); !won || winner != 2 || time.Since(start) >= timing.AttemptTimeout {
 		t.Fatalf("winner=%d won=%v after %s; want attempt 2 before the straggler times out", winner, won, time.Since(start))
+	}
+}
+
+func TestRun_whenAttemptAborts_thenNoFurtherAttemptLaunches(t *testing.T) {
+	// Arrange
+	attempt := func(ctx context.Context, num int) (int, Verdict) { return num, Aborted }
+
+	// Act
+	race := Run(context.Background(), fastTiming, attempt)
+
+	// Assert
+	if len(race.Settled().Results) != 1 {
+		t.Fatalf("got %+v; want only the aborting attempt", race.Settled())
+	}
+}
+
+func TestRun_whenAttemptAborts_thenInFlightAttemptIsCanceled(t *testing.T) {
+	// Arrange
+	timing := Timing{MaxAttempts: 2, Stagger: 10 * time.Millisecond, AttemptTimeout: 2 * time.Second}
+	attempt := func(ctx context.Context, num int) (error, Verdict) {
+		if num == 2 {
+			return nil, Aborted
+		}
+		<-ctx.Done()
+		return context.Cause(ctx), Lost
+	}
+
+	// Act
+	outcome := Run(context.Background(), timing, attempt).Settled()
+
+	// Assert
+	if !errors.Is(outcome.Results[0], errAborted) {
+		t.Fatalf("in-flight cause = %v, want errAborted", outcome.Results[0])
 	}
 }

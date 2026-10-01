@@ -7,7 +7,7 @@ import (
 type Settings struct {
 	ChatURL    string
 	CatalogURL string
-	// Hedged attempts per race; their timing comes from each request's Timeout.
+	// Hedged attempts per race; their timing comes from the engine's timeout.
 	MaxAttempts int
 	// Lets a success at exactly Timeout be recorded as slow, not as a timeout.
 	GraceAfterTimeout time.Duration

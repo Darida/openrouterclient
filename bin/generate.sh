@@ -1,6 +1,6 @@
 #!/bin/sh
 # Usage: bin/generate.sh --key=<openrouter-api-key> --tag=<history-tag> [--paid] <requirements.json>
-# Prints the reviewed result as JSON on stdout; logs go to stderr.
+# Prints the generated result as JSON on stdout; logs go to stderr. Never reviews.
 set -eu
 
 usage() {
