@@ -29,6 +29,14 @@ func newCatalog(t *testing.T) (*Catalog, *atomic.Int32) {
 	return &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}, &fetches
 }
 
+func newCatalogServing(t *testing.T, body string) *Catalog {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+	return &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}
+}
+
 func candidateIDs(models []Model) []string {
 	ids := make([]string, len(models))
 	for i, m := range models {
@@ -61,6 +69,36 @@ func TestCatalogCandidates_whenPaidTier_thenSkipsFreeRoutersAndBatchVariants(t *
 	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b"}) {
 		t.Fatalf("got %v", got)
 	}
+}
+
+func TestCatalogCandidates_whenThirdPartyRouterListed_thenSkipsIt(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[
+	  {"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"}},
+	  {"id":"typesafe/jev-router","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-1","completion":"-1"}}
+	]}`)
+
+	// Act
+	got := candidateIDs(c.Candidates(model.ModelTierPaid))
+
+	// Assert
+	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestCatalogCandidates_whenPriceNegativeButNotRouterPlaceholder_thenPanics(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-0.5","completion":"0.0000002"}}]}`)
+	defer func() {
+		// Assert
+		if recover() == nil {
+			t.Fatal("want panic")
+		}
+	}()
+
+	// Act
+	c.Candidates(model.ModelTierPaid)
 }
 
 func TestCatalogFreeStructuredModels_whenCalledTwiceWithinTTL_thenFetchesOnce(t *testing.T) {
