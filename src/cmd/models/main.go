@@ -1,47 +1,49 @@
 package main
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
-	"github.com/Darida/openrouterclient/src/cmd/internal/requirementsfile"
 	"github.com/Darida/openrouterclient/src/internal/engine"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/replyfile"
+	"github.com/Darida/openrouterclient/src/model"
 )
 
-func main() {
-	inputPath := flag.String("input", "", "requirements JSON file (required)")
-	historyPath := flag.String("history", "", "history JSON file (required)")
-	tag := flag.String("tag", "", "history tag whose exclusions apply (required)")
-	paid := flag.Bool("paid", false, "list the cheapest paid models instead of free ones")
-	flag.Parse()
-	if *inputPath == "" || *historyPath == "" || *tag == "" {
-		fail("--input, --history, and --tag are all required")
-	}
+// Only the catalog is read, so the tag and timeout never reach OpenRouter or history.
+const (
+	tag     = "models"
+	timeout = 60 * time.Second
+)
 
-	request, err := requirementsfile.Read(*inputPath, requirementsfile.Tier(*paid))
-	if err != nil {
-		fail(err.Error())
-	}
-	store, err := history.Open(*historyPath)
-	if err != nil {
-		fail(err.Error())
-	}
-	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", *tag, requirementsfile.Timeout, store, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	candidates, err := e.CandidateModels(request)
-	if err != nil {
-		fail(err.Error())
-	}
-	for _, id := range candidates {
-		fmt.Println(id)
-	}
+// sampleRequest leaves MaxOutputTokens at its default, so a model whose
+// context can't hold that many output tokens is left out, as in a real call.
+var sampleRequest = model.GenerateRequest{
+	Prompt: "Name a fruit.",
+	OutputSchema: model.JSONSchema{
+		Name:   "fruit",
+		Schema: json.RawMessage(`{"type":"object","properties":{"fruit":{"type":"string"}},"required":["fruit"],"additionalProperties":false}`),
+	},
+	TargetQuality: model.QualityHigh,
 }
 
-func fail(message string) {
-	fmt.Fprintln(os.Stderr, "models:", message)
-	os.Exit(1)
+func main() {
+	// Listing reads only the public model catalog, so no API key is sent.
+	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
+		request := sampleRequest
+		request.Models = model.ModelSelection{Tier: tier}
+		candidates, err := e.CandidateModels(request)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "models:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s:\n", tier)
+		for _, id := range candidates {
+			fmt.Printf("  %s\n", id)
+		}
+	}
 }

@@ -102,9 +102,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
     review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/` and `src/cmd/models/` are the command-line programs
-  behind `bin/generate.sh` and `bin/models.sh`; `src/cmd/internal/` holds
-  what they share, such as reading the requirements file.
+- `src/cmd/generate/`, `src/cmd/models/`, and `src/cmd/rate/` are the
+  command-line programs behind `bin/generate.sh`, `bin/models.sh`, and
+  `bin/rate.sh`; `src/cmd/internal/` holds the requirements-file reader
+  `bin/generate.sh` uses.
 
 ## Behavior
 
@@ -180,15 +181,15 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh --tag=bakery [--paid] bin/example-requirements.json
+bin/models.sh
 ```
 
-`bin/models.sh` takes the same requirements file and prints, one per line,
-the models a first `bin/generate.sh` attempt would pick from: the tier's
-structured-output models that fit the request's context, minus the
-history's exclusions for `--tag` + `-generate`, narrowed to the cheapest
-pool with `--paid`. It sends no chat request and needs no
-API key, since the model catalog is public.
+`bin/models.sh` takes no arguments. It runs the model-selection pipeline
+for a fixed sample request (a one-line prompt with the default
+`MaxOutputTokens`) against each tier and prints the free
+candidates, then the cheapest paid pool, one per line under a `free:` and
+a `paid:` heading. It ignores history, so no model is excluded. It sends
+no chat request and needs no API key, since the model catalog is public.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
