@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Darida/openrouterclient/src/internal/chat"
 	"github.com/Darida/openrouterclient/src/internal/schema"
@@ -38,7 +39,9 @@ var verdictSchema = model.JSONSchema{
 }`),
 }
 
-var verdictValidator = schema.Compile(verdictSchema.Name, verdictSchema.Schema)
+var verdictValidator = sync.OnceValues(func() (*schema.Validator, error) {
+	return schema.Compile(verdictSchema.Name, verdictSchema.Schema)
+})
 
 // The reviewer is framed as a senior checking someone else's work: shown the
 // output as its own assistant turn, a model defends it instead of checking it.
@@ -76,20 +79,28 @@ func Schema() model.JSONSchema { return verdictSchema }
 
 // Validate also rejects a total that contradicts the violations, which strict
 // mode can't express, so the reviewer is rated like any off-schema output.
-func Validate(content json.RawMessage) error {
-	if err := verdictValidator.Validate(content); err != nil {
-		return err
+// Only the returned invalid error is the reviewer's fault; err is a library bug.
+func Validate(content json.RawMessage) (invalid, err error) {
+	validator, err := verdictValidator()
+	if err != nil {
+		return nil, err
 	}
-	verdict := Parse(content)
+	if invalid := validator.Validate(content); invalid != nil {
+		return invalid, nil
+	}
+	verdict, err := Parse(content)
+	if err != nil {
+		return nil, err
+	}
 	switch {
 	case verdict.TotalBadScore < 0:
-		return fmt.Errorf("review: totalBadScore %d is negative", verdict.TotalBadScore)
+		return fmt.Errorf("review: totalBadScore %d is negative", verdict.TotalBadScore), nil
 	case verdict.TotalBadScore != sumBadScores(verdict.Violations):
-		return fmt.Errorf("review: totalBadScore %d differs from the violations' badScore sum %d", verdict.TotalBadScore, sumBadScores(verdict.Violations))
+		return fmt.Errorf("review: totalBadScore %d differs from the violations' badScore sum %d", verdict.TotalBadScore, sumBadScores(verdict.Violations)), nil
 	case len(verdict.Violations) > 0 && verdict.TotalBadScore == 0:
-		return fmt.Errorf("review: totalBadScore 0 with %d violations", len(verdict.Violations))
+		return fmt.Errorf("review: totalBadScore 0 with %d violations", len(verdict.Violations)), nil
 	}
-	return nil
+	return nil, nil
 }
 
 func sumBadScores(violations []model.ReviewViolation) int {
@@ -122,11 +133,11 @@ func FormatViolations(violations []model.ReviewViolation) string {
 	return strings.Join(lines, "\n")
 }
 
-// Parse expects content that already passed Validate.
-func Parse(content json.RawMessage) model.ReviewVerdict {
+// Parse expects content that already passed the verdict schema.
+func Parse(content json.RawMessage) (model.ReviewVerdict, error) {
 	var verdict model.ReviewVerdict
 	if err := json.Unmarshal(content, &verdict); err != nil {
-		panic(fmt.Sprintf("review: validated verdict does not unmarshal: %v — content: %s", err, content))
+		return model.ReviewVerdict{}, fmt.Errorf("review: schema-valid verdict does not unmarshal: %w", err)
 	}
-	return verdict
+	return verdict, nil
 }

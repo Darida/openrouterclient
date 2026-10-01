@@ -1,6 +1,7 @@
 package cost
 
 import (
+	"errors"
 	"math"
 	"sort"
 
@@ -25,10 +26,10 @@ func Estimate(m catalog.Model, promptTokens, maxOutputTokens int) float64 {
 }
 
 // CheapestPool keeps the models whose estimate is at most poolHeadroom times
-// the poolPercentile estimate among models. It panics on an empty models.
-func CheapestPool(models []catalog.Model, promptTokens, maxOutputTokens int) (pool []catalog.Model, ceilingUSD float64) {
+// the poolPercentile estimate among models. It errors on an empty models.
+func CheapestPool(models []catalog.Model, promptTokens, maxOutputTokens int) (pool []catalog.Model, ceilingUSD float64, err error) {
 	if len(models) == 0 {
-		panic("cost: no models to price")
+		return nil, 0, errors.New("cost: no models to price")
 	}
 	estimates := make([]float64, len(models))
 	for i, m := range models {
@@ -42,7 +43,7 @@ func CheapestPool(models []catalog.Model, promptTokens, maxOutputTokens int) (po
 			pool = append(pool, m)
 		}
 	}
-	return pool, ceilingUSD
+	return pool, ceilingUSD, nil
 }
 
 // Nearest-rank, no interpolation: the threshold is a real observed estimate.

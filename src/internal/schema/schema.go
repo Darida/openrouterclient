@@ -12,22 +12,22 @@ type Validator struct {
 	schema *jsonschema.Schema
 }
 
-// Compile panics on an invalid schema, since that is a caller bug, not a model failure.
-func Compile(name string, raw json.RawMessage) *Validator {
+// Compile errors on an invalid schema, since that is a caller bug, not a model failure.
+func Compile(name string, raw json.RawMessage) (*Validator, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
-		panic(fmt.Sprintf("schema: %q is not valid JSON: %v", name, err))
+		return nil, fmt.Errorf("schema: %q is not valid JSON: %w", name, err)
 	}
 	compiler := jsonschema.NewCompiler()
 	url := name + ".json"
 	if err := compiler.AddResource(url, doc); err != nil {
-		panic(fmt.Sprintf("schema: %q could not be added: %v", name, err))
+		return nil, fmt.Errorf("schema: %q could not be added: %w", name, err)
 	}
 	compiled, err := compiler.Compile(url)
 	if err != nil {
-		panic(fmt.Sprintf("schema: %q is not a valid JSON Schema: %v", name, err))
+		return nil, fmt.Errorf("schema: %q is not a valid JSON Schema: %w", name, err)
 	}
-	return &Validator{schema: compiled}
+	return &Validator{schema: compiled}, nil
 }
 
 func (v *Validator) Validate(content json.RawMessage) error {

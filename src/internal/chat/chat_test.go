@@ -2,7 +2,6 @@ package chat
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -10,16 +9,25 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-func TestChatParseResponse_whenContentNotJSON_thenErrors(t *testing.T) {
+func mustPayload(t *testing.T, messages []Message, schema model.JSONSchema, modelID string, maxTokens int) []byte {
+	t.Helper()
+	payload, err := BuildPayload(messages, schema, modelID, maxTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestChatParseResponse_whenContentNotJSON_thenMarksContentInvalid(t *testing.T) {
 	// Arrange
 	body := []byte(`{"model":"m/free","choices":[{"message":{"content":"not json"}}]}`)
 
 	// Act
-	_, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
+	reply, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
-	if err == nil {
-		t.Fatal("expected an error for non-JSON content")
+	if err != nil || reply.Invalid == nil {
+		t.Fatalf("got %+v, %v; want the content marked invalid", reply, err)
 	}
 }
 
@@ -31,7 +39,7 @@ func TestChatParseResponse_whenContentIsJSON_thenReturnsIt(t *testing.T) {
 	got, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
-	if err != nil || string(got) != `{"a":1}` {
+	if err != nil || string(got.Content) != `{"a":1}` {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
@@ -41,7 +49,7 @@ func TestChatBuildPayload_whenBuilt_thenRequestsTheGivenModel(t *testing.T) {
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "liquid/lfm-2.5-2.6b:free", 100))
+	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "liquid/lfm-2.5-2.6b:free", 100))
 
 	// Assert
 	if !strings.Contains(payload, `"model":"liquid/lfm-2.5-2.6b:free"`) {
@@ -54,7 +62,7 @@ func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T)
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free", 100))
+	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "m:free", 100))
 
 	// Assert
 	if !strings.Contains(payload, `"allow_fallbacks":false`) {
@@ -67,30 +75,30 @@ func TestChatParseResponse_whenBodyCarriesProviderError_thenReturnsProviderError
 	body := []byte(`{"id":"gen-1","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)
 
 	// Act
-	_, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
+	reply, err := ParseResponse(body, replyfile.Disabled(), "gen-1")
 
 	// Assert
-	var providerErr *ProviderError
-	if !errors.As(err, &providerErr) || providerErr.Code != 503 {
-		t.Fatalf("err = %v; want a 503 ProviderError", err)
+	if err != nil || reply.ProviderError == nil || reply.ProviderError.Code != 503 {
+		t.Fatalf("got %+v, %v; want a 503 ProviderError", reply, err)
 	}
 }
 
-func TestChatParseErrorBody_whenNotAnErrorObject_thenPanics(t *testing.T) {
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
+func TestChatParseErrorBody_whenNotAnErrorObject_thenErrors(t *testing.T) {
 	// Act
-	ParseErrorBody([]byte("<html>502 Bad Gateway</html>"), replyfile.Disabled(), "gen-1")
+	_, err := ParseErrorBody([]byte("<html>502 Bad Gateway</html>"), replyfile.Disabled(), "gen-1")
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func TestProviderErrorError_whenMetadataHasRaw_thenUsesItsFirstSentence(t *testing.T) {
 	// Arrange
-	providerErr := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`), replyfile.Disabled(), "gen-1")
+	providerErr, err := ParseErrorBody([]byte(`{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"qwen/qwen3.8-27b:free is temporarily rate-limited upstream. Please retry shortly.","provider_name":"ModelRun"}}}`), replyfile.Disabled(), "gen-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Act
 	got := providerErr.Error()
@@ -106,7 +114,7 @@ func TestChatBuildPayload_whenBuilt_thenSendsMaxTokens(t *testing.T) {
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m:free", 1234))
+	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "m:free", 1234))
 
 	// Assert
 	if !strings.Contains(payload, `"max_tokens":1234`) {
@@ -119,7 +127,7 @@ func TestChatBuildPayload_whenBuilt_thenSendsNoReasoningParameter(t *testing.T) 
 	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
 
 	// Act
-	payload := string(BuildPayload([]Message{UserMessage("hi")}, schema, "m", 100))
+	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "m", 100))
 
 	// Assert
 	if strings.Contains(payload, `"reasoning"`) {

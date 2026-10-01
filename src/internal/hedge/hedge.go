@@ -18,13 +18,19 @@ type Timing struct {
 	AttemptTimeout time.Duration
 }
 
+// errAborted is the context cause attempts see when another attempt aborted the race.
+var errAborted = errors.New("race aborted")
+
 // Race is a hedged set of attempts. Run returns it as soon as one attempt
-// wins or every attempt has failed; stragglers keep settling in the background.
+// wins, one aborts, or every attempt has failed; stragglers of a won race
+// keep settling in the background.
 type Race[T any] struct {
 	mu        sync.Mutex
 	winner    int
 	winResult T
 	won       chan struct{}
+	aborted   chan struct{}
+	abort     context.CancelCauseFunc
 	settled   chan struct{}
 	handles   []*handle[T]
 }
@@ -35,19 +41,22 @@ type handle[T any] struct {
 }
 
 // Run hedges attempt across up to MaxAttempts staggered parallel calls.
-// attempt reports success with its bool, and must return promptly once its
-// context is done; context.Cause tells it why.
-func Run[T any](ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, bool)) *Race[T] {
-	r := &Race[T]{winner: -1, won: make(chan struct{}), settled: make(chan struct{})}
+// attempt reports how it settled, and must return promptly once its context
+// is done; context.Cause tells it why.
+func Run[T any](ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, Verdict)) *Race[T] {
+	raceCtx, abort := context.WithCancelCause(ctx)
+	r := &Race[T]{winner: -1, won: make(chan struct{}), aborted: make(chan struct{}), abort: abort, settled: make(chan struct{})}
 	go func() {
 		defer close(r.settled)
-		r.launchAll(ctx, timing, attempt)
+		defer abort(nil)
+		r.launchAll(raceCtx, timing, attempt)
 		for _, h := range r.handles {
 			<-h.done
 		}
 	}()
 	select {
 	case <-r.won:
+	case <-r.aborted:
 	case <-r.settled:
 	}
 	return r
@@ -71,7 +80,7 @@ func (r *Race[T]) Settled() Outcome[T] {
 	return Outcome[T]{Results: results, winner: r.winner}
 }
 
-func (r *Race[T]) launchAll(ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, bool)) {
+func (r *Race[T]) launchAll(ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, Verdict)) {
 	r.launch(ctx, timing, attempt)
 	for len(r.handles) < timing.MaxAttempts {
 		stagger := time.NewTimer(timing.Stagger)
@@ -89,7 +98,7 @@ func (r *Race[T]) launchAll(ctx context.Context, timing Timing, attempt func(ctx
 	}
 }
 
-func (r *Race[T]) launch(ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, bool)) {
+func (r *Race[T]) launch(ctx context.Context, timing Timing, attempt func(ctx context.Context, num int) (T, Verdict)) {
 	index := len(r.handles)
 	timeoutCtx, cancelTimeout := context.WithTimeoutCause(ctx, timing.AttemptTimeout, ErrTimeout)
 	h := &handle[T]{done: make(chan struct{})}
@@ -97,16 +106,21 @@ func (r *Race[T]) launch(ctx context.Context, timing Timing, attempt func(ctx co
 	go func() {
 		defer close(h.done)
 		defer cancelTimeout()
-		result, ok := attempt(timeoutCtx, index+1)
+		result, verdict := attempt(timeoutCtx, index+1)
 		h.result = result
-		if !ok {
-			return
-		}
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.winner == -1 {
-			r.winner, r.winResult = index, result
-			close(r.won)
+		switch verdict {
+		case Won:
+			if r.winner == -1 && !isClosed(r.aborted) {
+				r.winner, r.winResult = index, result
+				close(r.won)
+			}
+		case Aborted:
+			if !isClosed(r.aborted) {
+				close(r.aborted)
+				r.abort(errAborted)
+			}
 		}
 	}()
 }

@@ -27,7 +27,7 @@ const (
 type Catalog struct {
 	URL  string
 	HTTP *http.Client
-	// Describes the catalog's raw body in panic messages.
+	// Describes the catalog's raw body in error messages.
 	Replies replyfile.Saver
 
 	mu        sync.Mutex
@@ -37,75 +37,122 @@ type Catalog struct {
 }
 
 // Candidates lists tier's models that support strict json_schema output,
-// skipping routers. It panics on a candidate whose price is negative or
+// skipping routers. It errors on a candidate whose price is negative or
 // unparseable, or whose context length is missing.
-func (c *Catalog) Candidates(tier model.ModelTier) []Model {
+func (c *Catalog) Candidates(tier model.ModelTier) ([]Model, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if time.Since(c.fetchedAt) >= cacheTTL {
-		c.refresh()
+		if err := c.refresh(); err != nil {
+			return nil, err
+		}
 	}
 	var candidates []Model
 	for _, m := range c.models {
-		if inTier(m.ID, tier) && !isBatchOnly(m.ID) && !isRouter(m) && slices.Contains(m.SupportedParameters, "structured_outputs") && slices.Contains(m.Architecture.OutputModalities, "text") {
-			candidates = append(candidates, Model{ID: m.ID, ContextTokens: c.contextTokens(m), PromptUSDPerToken: c.price(m.ID, "prompt", m.Pricing.Prompt), CompletionUSDPerToken: c.price(m.ID, "completion", m.Pricing.Completion)})
+		member, err := inTier(m.ID, tier)
+		if err != nil {
+			return nil, err
 		}
+		if !member || isBatchOnly(m.ID) || isRouter(m) || !slices.Contains(m.SupportedParameters, "structured_outputs") || !slices.Contains(m.Architecture.OutputModalities, "text") {
+			continue
+		}
+		candidate, err := c.candidate(m)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
 	}
-	return candidates
+	return candidates, nil
 }
 
-func (c *Catalog) refresh() {
-	c.body = c.fetch()
-	c.models, c.fetchedAt = c.parse(c.body), time.Now()
+func (c *Catalog) candidate(m entry) (Model, error) {
+	if m.ContextLength <= 0 {
+		return Model{}, c.unexpected(fmt.Sprintf("model %q has no context length", m.ID))
+	}
+	prompt, err := c.price(m.ID, "prompt", m.Pricing.Prompt)
+	if err != nil {
+		return Model{}, err
+	}
+	completion, err := c.price(m.ID, "completion", m.Pricing.Completion)
+	if err != nil {
+		return Model{}, err
+	}
+	return Model{ID: m.ID, ContextTokens: m.ContextLength, PromptUSDPerToken: prompt, CompletionUSDPerToken: completion}, nil
 }
 
-func (c *Catalog) fetch() []byte {
+func (c *Catalog) refresh() error {
+	body, err := c.fetch()
+	if err != nil {
+		return err
+	}
+	models, err := c.parse(body)
+	if err != nil {
+		return err
+	}
+	c.body, c.models, c.fetchedAt = body, models, time.Now()
+	return nil
+}
+
+func (c *Catalog) fetch() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
 	if err != nil {
-		panic(fmt.Sprintf("catalog: build request: %v", err))
+		return nil, fmt.Errorf("catalog: build request: %w", err)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		panic(fmt.Sprintf("catalog: fetch %s: %v", c.URL, err))
+		return nil, fmt.Errorf("catalog: fetch %s: %w", c.URL, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic(fmt.Sprintf("catalog: read %s: %v", c.URL, err))
+		return nil, fmt.Errorf("catalog: read %s: %w", c.URL, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		panic(fmt.Sprintf("catalog: %s returned HTTP %d: %s", c.URL, resp.StatusCode, c.Replies.Describe("", "catalog", body)))
+		return nil, c.describedError(body, fmt.Sprintf("%s returned HTTP %d", c.URL, resp.StatusCode))
 	}
-	return body
+	return body, nil
 }
 
-func (c *Catalog) parse(body []byte) []entry {
+func (c *Catalog) parse(body []byte) ([]entry, error) {
 	var parsed struct {
 		Data []entry `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Data) == 0 {
-		panic(fmt.Sprintf("catalog: %s returned no models: %v — %s", c.URL, err, c.Replies.Describe("", "catalog", body)))
+		return nil, c.describedError(body, fmt.Sprintf("%s returned no models: %v", c.URL, err))
 	}
 	for _, m := range parsed.Data {
 		if m.ID == "" {
-			panic(fmt.Sprintf("catalog: model entry without id: %s", c.Replies.Describe("", "catalog", body)))
+			return nil, c.describedError(body, "model entry without id")
 		}
 	}
-	return parsed.Data
+	return parsed.Data, nil
+}
+
+// unexpected describes the cached catalog body, which holds the offending entry.
+func (c *Catalog) unexpected(problem string) error {
+	return c.describedError(c.body, problem)
+}
+
+func (c *Catalog) describedError(body []byte, problem string) error {
+	described, err := c.Replies.Describe("", "catalog", body)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("catalog: %s: %s", problem, described)
 }
 
 // OpenRouter's own "openrouter/…" entries are routers, not models.
-func inTier(id string, tier model.ModelTier) bool {
+func inTier(id string, tier model.ModelTier) (bool, error) {
 	free := strings.HasSuffix(id, ":free")
 	switch tier {
 	case model.ModelTierFree:
-		return free
+		return free, nil
 	case model.ModelTierPaid:
-		return !free && !strings.HasPrefix(id, "openrouter/")
+		return !free && !strings.HasPrefix(id, "openrouter/"), nil
 	}
-	panic(fmt.Sprintf("catalog: unknown model tier %q", tier))
+	return false, fmt.Errorf("catalog: unknown model tier %q", tier)
 }
 
 func isRouter(m entry) bool {
@@ -117,17 +164,10 @@ func isBatchOnly(id string) bool {
 	return strings.HasSuffix(id, ":batch")
 }
 
-func (c *Catalog) contextTokens(m entry) int {
-	if m.ContextLength <= 0 {
-		panic(fmt.Sprintf("catalog: model %q has no context length: %s", m.ID, c.Replies.Describe("", "catalog", c.body)))
-	}
-	return m.ContextLength
-}
-
-func (c *Catalog) price(id, kind, raw string) float64 {
+func (c *Catalog) price(id, kind, raw string) (float64, error) {
 	usd, err := strconv.ParseFloat(raw, 64)
 	if err != nil || usd < 0 {
-		panic(fmt.Sprintf("catalog: model %q has an invalid %s price %q: %s", id, kind, raw, c.Replies.Describe("", "catalog", c.body)))
+		return 0, c.unexpected(fmt.Sprintf("model %q has an invalid %s price %q", id, kind, raw))
 	}
-	return usd
+	return usd, nil
 }

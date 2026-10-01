@@ -117,8 +117,16 @@ func newEngine(t *testing.T, settings Settings) (*Engine, string) {
 	// Keeps saved replies out of the real system temp directory.
 	t.Setenv("TMPDIR", t.TempDir())
 	path := filepath.Join(t.TempDir(), "history.json")
-	engine := New(settings, "key", history.Open(path), replyfile.Local(), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	t.Cleanup(engine.Close)
+	store, err := history.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := New(settings, "key", store, replyfile.Local(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return engine, path
 }
 
@@ -240,38 +248,34 @@ func TestEngineGenerateText_whenMaxCorrectionsZero_thenGeneratesOnce(t *testing.
 	}
 }
 
-func TestEngineValidateRequirements_whenMaxCorrectionsNegative_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenMaxCorrectionsNegative_thenErrors(t *testing.T) {
 	// Arrange
 	negative := requirements
 	negative.MaxCorrections = -1
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	validateRequirements(negative)
+	err := validateRequirements(negative)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
-func TestEngineValidateRequirements_whenMaxCorrectionsSetWithoutRules_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenMaxCorrectionsSetWithoutRules_thenErrors(t *testing.T) {
 	// Arrange
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
 	unreviewed.ReviewToleranceThreshold = 0
 	unreviewed.MaxCorrections = 1
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	validateRequirements(unreviewed)
+	err := validateRequirements(unreviewed)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedModel(t *testing.T) {
@@ -296,7 +300,9 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedM
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -327,7 +333,9 @@ func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t 
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -398,7 +406,9 @@ func TestEngineGenerateText_whenProviderRejectsIn200Body_thenRecordsNothingForIt
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -429,7 +439,9 @@ func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstPickedModel
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -468,7 +480,9 @@ func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRef
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -511,7 +525,9 @@ func TestEngineGenerateText_whenEveryAttemptRefused_thenRecordsNoRefusal(t *test
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	_, statErr := os.Stat(path)
 
 	// Assert
@@ -584,7 +600,9 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -696,10 +714,10 @@ func TestEngineCandidateModels_whenCheapestModelExcluded_thenListsNextCheapest(t
 	paid.ExcludedModels = []string{"cheap/model"}
 
 	// Act
-	candidates := engine.CandidateModels(paid)
+	candidates, err := engine.CandidateModels(paid)
 
 	// Assert
-	if !reflect.DeepEqual(candidates, []string{"pricey/model"}) {
+	if err != nil || !reflect.DeepEqual(candidates, []string{"pricey/model"}) {
 		t.Fatalf("candidates=%v; want [pricey/model]", candidates)
 	}
 }
@@ -711,7 +729,9 @@ func TestEngineCandidateModels_whenListing_thenSendsNoChatRequest(t *testing.T) 
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	engine.CandidateModels(requirements)
+	if _, err := engine.CandidateModels(requirements); err != nil {
+		t.Fatal(err)
+	}
 
 	// Assert
 	if len(fake.generations)+len(fake.reviews) != 0 {
@@ -719,7 +739,7 @@ func TestEngineCandidateModels_whenListing_thenSendsNoChatRequest(t *testing.T) 
 	}
 }
 
-func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenPanics(t *testing.T) {
+func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -732,18 +752,17 @@ func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenPanics(t *testing.
 	unknown := requirements
 	unknown.ExcludedModels = []string{"missing/model:free"}
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	engine.GenerateText(context.Background(), unknown)
+	_, err := engine.GenerateText(context.Background(), unknown)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
+	}
 }
 
-func TestEngineGenerateText_whenExcludedModelInOtherTier_thenPanics(t *testing.T) {
+func TestEngineGenerateText_whenExcludedModelInOtherTier_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -756,18 +775,17 @@ func TestEngineGenerateText_whenExcludedModelInOtherTier_thenPanics(t *testing.T
 	otherTier := requirements
 	otherTier.ExcludedModels = []string{"cheap/model"}
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	engine.GenerateText(context.Background(), otherTier)
+	_, err := engine.GenerateText(context.Background(), otherTier)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
+	}
 }
 
-func TestEngineGenerateText_whenEveryCandidateExcluded_thenPanics(t *testing.T) {
+func TestEngineGenerateText_whenEveryCandidateExcluded_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -780,48 +798,43 @@ func TestEngineGenerateText_whenEveryCandidateExcluded_thenPanics(t *testing.T) 
 	allExcluded := requirements
 	allExcluded.ExcludedModels = []string{pickedModel}
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	engine.GenerateText(context.Background(), allExcluded)
+	_, err := engine.GenerateText(context.Background(), allExcluded)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
+	}
 }
 
-func TestEngineValidateRequirements_whenRulesSetWithoutThreshold_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenRulesSetWithoutThreshold_thenErrors(t *testing.T) {
 	// Arrange
 	unthresholded := requirements
 	unthresholded.ReviewToleranceThreshold = 0
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	validateRequirements(unthresholded)
+	err := validateRequirements(unthresholded)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
-func TestEngineValidateRequirements_whenThresholdSetWithoutRules_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenThresholdSetWithoutRules_thenErrors(t *testing.T) {
 	// Arrange
 	unreviewed := requirements
 	unreviewed.OutputValidationRules = ""
 	unreviewed.MaxCorrections = 0
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	validateRequirements(unreviewed)
+	err := validateRequirements(unreviewed)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testing.T) {
@@ -848,20 +861,18 @@ func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testi
 	}
 }
 
-func TestEngineValidateRequirements_whenTimeoutZero_thenPanics(t *testing.T) {
+func TestEngineValidateRequirements_whenTimeoutZero_thenErrors(t *testing.T) {
 	// Arrange
 	untimed := requirements
 	untimed.Timeout = 0
 
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
 	// Act
-	validateRequirements(untimed)
+	err := validateRequirements(untimed)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 // correctedOnce flags the first output, so the run holds a correction and a
@@ -981,7 +992,9 @@ func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGenerat
 	}
 
 	// Act
-	engine.Close()
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
 	entries := readHistory(t, path)
 
 	// Assert
@@ -1143,7 +1156,11 @@ func TestEngineGenerateText_whenRepliesDisabledAndRoundBelowTarget_thenReasonNam
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine := New(settings, "key", history.Disabled{}, replyfile.Disabled(), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	t.Cleanup(engine.Close)
+	t.Cleanup(func() {
+		if err := engine.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// Act
 	_, err := engine.GenerateText(context.Background(), requirements)
@@ -1155,5 +1172,41 @@ func TestEngineGenerateText_whenRepliesDisabledAndRoundBelowTarget_thenReasonNam
 	}
 	if reason := exhausted.Attempts[0].Reason; !strings.Contains(reason, "generation id "+exhausted.Attempts[0].GenerationID) {
 		t.Fatalf("reason = %q, want it to name generation id %s", reason, exhausted.Attempts[0].GenerationID)
+	}
+}
+
+func unauthorized(w http.ResponseWriter, r *http.Request, n int) {
+	w.WriteHeader(http.StatusUnauthorized)
+	fmt.Fprint(w, `{"error":{"message":"No auth credentials found","code":401}}`)
+}
+
+func TestEngineGenerateText_whenChatReturnsUnexpectedStatus_thenReturnsUnexpectedError(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: unauthorized, review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
+	}
+}
+
+func TestEngineGenerateText_whenChatReturnsUnexpectedStatus_thenSendsNoFurtherAttempt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: unauthorized, review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	engine.GenerateText(context.Background(), requirements)
+
+	// Assert
+	if len(fake.generations) != 1 {
+		t.Fatalf("generations = %d; want the race aborted after the first", len(fake.generations))
 	}
 }

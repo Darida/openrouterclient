@@ -38,22 +38,20 @@ func TestQualityFromBadScore_whenAboveThreshold_thenLow(t *testing.T) {
 
 func TestQualityBelow_whenMediumAgainstHighTarget_thenTrue(t *testing.T) {
 	// Act
-	got := Below(model.QualityMedium, model.QualityHigh)
+	got, err := Below(model.QualityMedium, model.QualityHigh)
 
 	// Assert
-	if !got {
+	if err != nil || !got {
 		t.Fatal("medium should be below a high target")
 	}
 }
 
-func TestQualityBelow_whenUnknownQuality_thenPanics(t *testing.T) {
-	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
+func TestQualityBelow_whenUnknownQuality_thenErrors(t *testing.T) {
 	// Act
-	Below("excellent", model.QualityHigh)
+	_, err := Below("excellent", model.QualityHigh)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }

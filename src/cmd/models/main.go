@@ -32,8 +32,16 @@ func main() {
 		requirements.Timeout = api.DefaultTimeout
 	}
 	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", history.Open(*historyPath), replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	for _, id := range e.CandidateModels(requirements) {
+	store, err := history.Open(*historyPath)
+	if err != nil {
+		fail(err.Error())
+	}
+	e := engine.New(engine.Production, "", store, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	candidates, err := e.CandidateModels(requirements)
+	if err != nil {
+		fail(err.Error())
+	}
+	for _, id := range candidates {
 		fmt.Println(id)
 	}
 }

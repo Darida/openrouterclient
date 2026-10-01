@@ -37,6 +37,15 @@ func newCatalogServing(t *testing.T, body string) *Catalog {
 	return &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}
 }
 
+func mustCandidates(t *testing.T, c *Catalog, tier model.ModelTier) []Model {
+	t.Helper()
+	models, err := c.Candidates(tier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return models
+}
+
 func candidateIDs(models []Model) []string {
 	ids := make([]string, len(models))
 	for i, m := range models {
@@ -50,7 +59,7 @@ func TestCatalogCandidates_whenFreeTier_thenOnlyFreeWithStructuredOutputs(t *tes
 	c, _ := newCatalog(t)
 
 	// Act
-	got := candidateIDs(c.Candidates(model.ModelTierFree))
+	got := candidateIDs(mustCandidates(t, c, model.ModelTierFree))
 
 	// Assert
 	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b:free"}) {
@@ -63,7 +72,7 @@ func TestCatalogCandidates_whenPaidTier_thenSkipsFreeRoutersAndBatchVariants(t *
 	c, _ := newCatalog(t)
 
 	// Act
-	got := candidateIDs(c.Candidates(model.ModelTierPaid))
+	got := candidateIDs(mustCandidates(t, c, model.ModelTierPaid))
 
 	// Assert
 	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b"}) {
@@ -79,7 +88,7 @@ func TestCatalogCandidates_whenThirdPartyRouterListed_thenSkipsIt(t *testing.T) 
 	]}`)
 
 	// Act
-	got := candidateIDs(c.Candidates(model.ModelTierPaid))
+	got := candidateIDs(mustCandidates(t, c, model.ModelTierPaid))
 
 	// Assert
 	if !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b"}) {
@@ -87,27 +96,26 @@ func TestCatalogCandidates_whenThirdPartyRouterListed_thenSkipsIt(t *testing.T) 
 	}
 }
 
-func TestCatalogCandidates_whenPriceNegativeButNotRouterPlaceholder_thenPanics(t *testing.T) {
+func TestCatalogCandidates_whenPriceNegativeButNotRouterPlaceholder_thenErrors(t *testing.T) {
 	// Arrange
 	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-0.5","completion":"0.0000002"}}]}`)
-	defer func() {
-		// Assert
-		if recover() == nil {
-			t.Fatal("want panic")
-		}
-	}()
 
 	// Act
-	c.Candidates(model.ModelTierPaid)
+	_, err := c.Candidates(model.ModelTierPaid)
+
+	// Assert
+	if err == nil {
+		t.Fatal("want an error")
+	}
 }
 
 func TestCatalogFreeStructuredModels_whenCalledTwiceWithinTTL_thenFetchesOnce(t *testing.T) {
 	// Arrange
 	c, fetches := newCatalog(t)
-	c.Candidates(model.ModelTierFree)
+	mustCandidates(t, c, model.ModelTierFree)
 
 	// Act
-	c.Candidates(model.ModelTierFree)
+	mustCandidates(t, c, model.ModelTierFree)
 
 	// Assert
 	if fetches.Load() != 1 {
@@ -115,20 +123,19 @@ func TestCatalogFreeStructuredModels_whenCalledTwiceWithinTTL_thenFetchesOnce(t 
 	}
 }
 
-func TestCatalogCandidates_whenContextLengthMissing_thenPanics(t *testing.T) {
+func TestCatalogCandidates_whenContextLengthMissing_thenErrors(t *testing.T) {
 	// Arrange
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":"liquid/lfm-2.5-2.6b:free","supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}]}`))
 	}))
 	t.Cleanup(server.Close)
 	c := &Catalog{URL: server.URL, HTTP: server.Client(), Replies: replyfile.Disabled()}
-	defer func() {
-		// Assert
-		if recover() == nil {
-			t.Fatal("want panic")
-		}
-	}()
 
 	// Act
-	c.Candidates(model.ModelTierFree)
+	_, err := c.Candidates(model.ModelTierFree)
+
+	// Assert
+	if err == nil {
+		t.Fatal("want an error")
+	}
 }

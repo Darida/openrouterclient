@@ -65,12 +65,11 @@ type Entry struct {
 	fields EntryFields
 }
 
-// NewEntry panics on invalid fields, since only this package's callers build them.
-func NewEntry(fields EntryFields) Entry {
+func NewEntry(fields EntryFields) (Entry, error) {
 	if err := validate(fields); err != nil {
-		panic(err.Error())
+		return Entry{}, fmt.Errorf("history: %w", err)
 	}
-	return Entry{fields: fields}
+	return Entry{fields: fields}, nil
 }
 
 func (e Entry) Fields() EntryFields { return e.fields }

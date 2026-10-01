@@ -15,7 +15,7 @@ func generatorFields(generationID string, q, target model.Quality, at time.Time)
 
 func TestStoreRecordManual_whenGenerationUnknown_thenErrors(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 
 	// Act
 	err := store.RecordManual("gen-missing", model.QualityHigh, "good", time.Now())
@@ -28,8 +28,8 @@ func TestStoreRecordManual_whenGenerationUnknown_thenErrors(t *testing.T) {
 
 func TestStoreRecordManual_whenAlreadyRated_thenErrors(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
-	store.Append(NewEntry(generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now())))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
+	mustAppend(t, store, generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now()))
 	if err := store.RecordManual("gen-m", model.QualityLow, "wrong facts", time.Now()); err != nil {
 		t.Fatalf("setup: first rating failed: %v", err)
 	}
@@ -45,8 +45,8 @@ func TestStoreRecordManual_whenAlreadyRated_thenErrors(t *testing.T) {
 
 func TestStoreRecordManual_whenQualityUnusable_thenErrors(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
-	store.Append(NewEntry(generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now())))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
+	mustAppend(t, store, generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now()))
 
 	// Act
 	err := store.RecordManual("gen-m", model.QualityUnusable, "broken", time.Now())
@@ -59,18 +59,18 @@ func TestStoreRecordManual_whenQualityUnusable_thenErrors(t *testing.T) {
 
 func TestStoreRecordManual_whenBelowTarget_thenCountsTowardExclusion(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
 	for i := 0; i < 4; i++ {
 		generationID := "gen-" + string(rune('a'+i))
-		store.Append(NewEntry(generatorFields(generationID, model.QualityHigh, model.QualityHigh, now)))
+		mustAppend(t, store, generatorFields(generationID, model.QualityHigh, model.QualityHigh, now))
 		if err := store.RecordManual(generationID, model.QualityLow, "wrong", now); err != nil {
 			t.Fatalf("setup: rating failed: %v", err)
 		}
 	}
 
 	// Act
-	got := store.Exclusions(now, "t")
+	got := mustExclusions(t, store, now, "t")
 
 	// Assert
 	if len(got.Excluded) != 1 || got.Excluded[0] != "m" {
@@ -78,56 +78,47 @@ func TestStoreRecordManual_whenBelowTarget_thenCountsTowardExclusion(t *testing.
 	}
 }
 
-func TestStoreOpen_whenFileMalformed_thenPanics(t *testing.T) {
+func TestStoreOpen_whenFileMalformed_thenErrors(t *testing.T) {
 	// Arrange
 	path := filepath.Join(t.TempDir(), "history.json")
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Act
+	_, err := Open(path)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	Open(path)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
-func TestEntryNew_whenFailedOutcomeHasRatedQuality_thenPanics(t *testing.T) {
+func TestEntryNew_whenFailedOutcomeHasRatedQuality_thenErrors(t *testing.T) {
 	// Arrange
 	fields := generatorFields("gen-m", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.Outcome = OutcomeTimeout
+	// Act
+	_, err := NewEntry(fields)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	NewEntry(fields)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
-func TestStoreOpen_whenEntryInvalid_thenPanics(t *testing.T) {
+func TestStoreOpen_whenEntryInvalid_thenErrors(t *testing.T) {
 	// Arrange
 	path := filepath.Join(t.TempDir(), "history.json")
 	if err := os.WriteFile(path, []byte(`[{"timestamp":"2026-09-28T00:00:00Z","model":"m","generationId":"g","role":"generator","source":"auto","outcome":"success"}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Act
+	_, err := Open(path)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic for an entry without targetQuality")
-		}
-	}()
-
-	// Act
-	Open(path)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func refusedFields(at time.Time) EntryFields {
@@ -139,34 +130,31 @@ func TestEntryNew_whenRefusedOutcomeLacksGenerationID_thenBuildsEntry(t *testing
 	fields := refusedFields(time.Now())
 
 	// Act
-	entry := NewEntry(fields)
+	entry, err := NewEntry(fields)
 
 	// Assert
-	if entry.Fields().Outcome != OutcomeRefused {
+	if err != nil || entry.Fields().Outcome != OutcomeRefused {
 		t.Fatalf("entry = %+v, want a refused entry", entry.Fields())
 	}
 }
 
-func TestEntryNew_whenFailedOutcomeLacksGenerationID_thenPanics(t *testing.T) {
+func TestEntryNew_whenFailedOutcomeLacksGenerationID_thenErrors(t *testing.T) {
 	// Arrange
 	fields := refusedFields(time.Now())
 	fields.Outcome = OutcomeFailed
+	// Act
+	_, err := NewEntry(fields)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	NewEntry(fields)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func TestStoreRecordManual_whenGenerationIDEmpty_thenErrors(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
-	store.Append(NewEntry(refusedFields(time.Now())))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
+	mustAppend(t, store, refusedFields(time.Now()))
 
 	// Act
 	err := store.RecordManual("", model.QualityHigh, "good", time.Now())
@@ -177,20 +165,17 @@ func TestStoreRecordManual_whenGenerationIDEmpty_thenErrors(t *testing.T) {
 	}
 }
 
-func TestEntryNew_whenTimeoutMissing_thenPanics(t *testing.T) {
+func TestEntryNew_whenTimeoutMissing_thenErrors(t *testing.T) {
 	// Arrange
 	fields := generatorFields("g", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.TimeoutSeconds = 0
+	// Act
+	_, err := NewEntry(fields)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	NewEntry(fields)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }
 
 func reviewerFields(generationID, reviewedID string, at time.Time) EntryFields {
@@ -198,7 +183,11 @@ func reviewerFields(generationID, reviewedID string, at time.Time) EntryFields {
 }
 
 func fieldsOf(t *testing.T, store *Store, generationID string, source Source) EntryFields {
-	for _, e := range store.load() {
+	entries, err := store.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
 		if f := e.Fields(); f.GenerationID == generationID && f.Source == source {
 			return f
 		}
@@ -209,10 +198,10 @@ func fieldsOf(t *testing.T, store *Store, generationID string, source Source) En
 
 func TestStoreRecordManual_whenReviewerRatedLow_thenReviewedGenerationUnrated(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
-	store.Append(NewEntry(generatorFields("gen-g", model.QualityLow, model.QualityHigh, now)))
-	store.Append(NewEntry(reviewerFields("gen-r", "gen-g", now)))
+	mustAppend(t, store, generatorFields("gen-g", model.QualityLow, model.QualityHigh, now))
+	mustAppend(t, store, reviewerFields("gen-r", "gen-g", now))
 
 	// Act
 	if err := store.RecordManual("gen-r", model.QualityLow, "misread rule 1", now); err != nil {
@@ -227,10 +216,10 @@ func TestStoreRecordManual_whenReviewerRatedLow_thenReviewedGenerationUnrated(t 
 
 func TestStoreRecordManual_whenReviewerRatedHigh_thenReviewedGenerationKeepsRating(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
-	store.Append(NewEntry(generatorFields("gen-g", model.QualityLow, model.QualityHigh, now)))
-	store.Append(NewEntry(reviewerFields("gen-r", "gen-g", now)))
+	mustAppend(t, store, generatorFields("gen-g", model.QualityLow, model.QualityHigh, now))
+	mustAppend(t, store, reviewerFields("gen-r", "gen-g", now))
 
 	// Act
 	if err := store.RecordManual("gen-r", model.QualityHigh, "spot on", now); err != nil {
@@ -245,10 +234,10 @@ func TestStoreRecordManual_whenReviewerRatedHigh_thenReviewedGenerationKeepsRati
 
 func TestStoreRecordManual_whenReviewerRatedLow_thenReviewedGenerationManualRatingStays(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
-	store.Append(NewEntry(generatorFields("gen-g", model.QualityLow, model.QualityHigh, now)))
-	store.Append(NewEntry(reviewerFields("gen-r", "gen-g", now)))
+	mustAppend(t, store, generatorFields("gen-g", model.QualityLow, model.QualityHigh, now))
+	mustAppend(t, store, reviewerFields("gen-r", "gen-g", now))
 	if err := store.RecordManual("gen-g", model.QualityMedium, "fine by me", now); err != nil {
 		t.Fatalf("setup: rating generation failed: %v", err)
 	}
@@ -266,10 +255,10 @@ func TestStoreRecordManual_whenReviewerRatedLow_thenReviewedGenerationManualRati
 
 func TestStoreRecordManual_whenReviewerWithoutLinkRatedLow_thenGenerationKeepsRating(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
-	store.Append(NewEntry(generatorFields("gen-g", model.QualityLow, model.QualityHigh, now)))
-	store.Append(NewEntry(reviewerFields("gen-r", "", now)))
+	mustAppend(t, store, generatorFields("gen-g", model.QualityLow, model.QualityHigh, now))
+	mustAppend(t, store, reviewerFields("gen-r", "", now))
 
 	// Act
 	if err := store.RecordManual("gen-r", model.QualityLow, "straggler was wrong", now); err != nil {
@@ -284,19 +273,19 @@ func TestStoreRecordManual_whenReviewerWithoutLinkRatedLow_thenGenerationKeepsRa
 
 func TestStoreRecordManual_whenReviewersRatedLow_thenReviewerModelExcluded(t *testing.T) {
 	// Arrange
-	store := Open(filepath.Join(t.TempDir(), "history.json"))
+	store := mustOpen(t, filepath.Join(t.TempDir(), "history.json"))
 	now := time.Now()
 	for i := 0; i < 4; i++ {
 		suffix := string(rune('a' + i))
-		store.Append(NewEntry(generatorFields("gen-g"+suffix, model.QualityHigh, model.QualityHigh, now)))
-		store.Append(NewEntry(reviewerFields("gen-r"+suffix, "gen-g"+suffix, now)))
+		mustAppend(t, store, generatorFields("gen-g"+suffix, model.QualityHigh, model.QualityHigh, now))
+		mustAppend(t, store, reviewerFields("gen-r"+suffix, "gen-g"+suffix, now))
 		if err := store.RecordManual("gen-r"+suffix, model.QualityLow, "wrong", now); err != nil {
 			t.Fatalf("setup: rating failed: %v", err)
 		}
 	}
 
 	// Act
-	got := store.Exclusions(now, "t")
+	got := mustExclusions(t, store, now, "t")
 
 	// Assert
 	if len(got.Excluded) != 1 || got.Excluded[0] != "r" {
@@ -304,18 +293,15 @@ func TestStoreRecordManual_whenReviewersRatedLow_thenReviewerModelExcluded(t *te
 	}
 }
 
-func TestEntryNew_whenGeneratorNamesReviewedGeneration_thenPanics(t *testing.T) {
+func TestEntryNew_whenGeneratorNamesReviewedGeneration_thenErrors(t *testing.T) {
 	// Arrange
 	fields := generatorFields("gen-g", model.QualityHigh, model.QualityHigh, time.Now())
 	fields.ReviewedGenerationID = "gen-other"
+	// Act
+	_, err := NewEntry(fields)
 
 	// Assert
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected a panic")
-		}
-	}()
-
-	// Act
-	NewEntry(fields)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
 }

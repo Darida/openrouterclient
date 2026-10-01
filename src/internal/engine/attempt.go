@@ -24,6 +24,8 @@ type attempt struct {
 	reason   string
 	// Provider rejections resent within this attempt before it settled.
 	resends int
+	// Something no model causes, such as an undocumented reply; it aborts the race.
+	fatal error
 }
 
 // raceLabel is what every history entry from one race shares.
@@ -44,6 +46,10 @@ type reviewedRound struct {
 	verdict  model.ReviewVerdict
 	quality  model.Quality
 }
+
+// validator reports whether content is the model's valid output. Only invalid
+// is the model's fault; err aborts the call.
+type validator func(content json.RawMessage) (invalid, err error)
 
 func (r reviewedRound) generatedText() model.GeneratedText {
 	return model.GeneratedText{

@@ -7,10 +7,10 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-func failedEntries(n int, at time.Time, tag string) []Entry {
+func failedEntries(t *testing.T, n int, at time.Time, tag string) []Entry {
 	entries := make([]Entry, n)
 	for i := range entries {
-		entries[i] = NewEntry(EntryFields{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: tag})
+		entries[i] = mustEntry(t, EntryFields{Timestamp: at, Model: "m", GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: tag})
 	}
 	return entries
 }
@@ -20,7 +20,7 @@ func TestComputeExclusions_whenFourFailuresToday_thenExcluded(t *testing.T) {
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 
 	// Act
-	got := computeExclusions(failedEntries(4, now, "t"), now, "t")
+	got := mustCompute(t, failedEntries(t, 4, now, "t"), now, "t")
 
 	// Assert
 	if len(got.Excluded) != 1 {
@@ -33,7 +33,7 @@ func TestComputeExclusions_whenThreeFailuresToday_thenBelowCap(t *testing.T) {
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 
 	// Act
-	got := computeExclusions(failedEntries(3, now, "t"), now, "t")
+	got := mustCompute(t, failedEntries(t, 3, now, "t"), now, "t")
 
 	// Assert
 	if len(got.Excluded) != 0 || len(got.BelowCap) != 1 {
@@ -46,7 +46,7 @@ func TestCountsAsFailure_whenQualityBelowTarget_thenTrue(t *testing.T) {
 	e := generatorFields("g", model.QualityMedium, model.QualityHigh, time.Now())
 
 	// Act
-	got := countsAsFailure(e)
+	got := mustCountAsFailure(t, e)
 
 	// Assert
 	if !got {
@@ -61,7 +61,7 @@ func TestCountsAsFailure_whenSuccessTookItsTimeout_thenTrue(t *testing.T) {
 	e.LatencySeconds = 90
 
 	// Act
-	got := countsAsFailure(e)
+	got := mustCountAsFailure(t, e)
 
 	// Assert
 	if !got {
@@ -74,7 +74,7 @@ func TestCountsAsFailure_whenUnratedSuccess_thenFalse(t *testing.T) {
 	e := generatorFields("g", "", model.QualityHigh, time.Now())
 
 	// Act
-	got := countsAsFailure(e)
+	got := mustCountAsFailure(t, e)
 
 	// Assert
 	if got {
@@ -87,7 +87,7 @@ func TestComputeExclusions_whenFourFailuresTodayUnderOtherTag_thenBelowCap(t *te
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 
 	// Act
-	got := computeExclusions(failedEntries(4, now, "other"), now, "t")
+	got := mustCompute(t, failedEntries(t, 4, now, "other"), now, "t")
 
 	// Assert
 	if len(got.Excluded) != 0 {
@@ -100,7 +100,7 @@ func TestComputeExclusions_whenEightFailuresTodayUnderOtherTag_thenExcluded(t *t
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 
 	// Act
-	got := computeExclusions(failedEntries(8, now, "other"), now, "t")
+	got := mustCompute(t, failedEntries(t, 8, now, "other"), now, "t")
 
 	// Assert
 	if len(got.Excluded) != 1 {
@@ -112,12 +112,12 @@ func TestComputeExclusions_whenBelowCap_thenMostFailuresTodayFirst(t *testing.T)
 	// Arrange
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 	failure := func(modelID string) Entry {
-		return NewEntry(EntryFields{Timestamp: now, Model: modelID, GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: "t"})
+		return mustEntry(t, EntryFields{Timestamp: now, Model: modelID, GenerationID: "g", Role: RoleGenerator, Source: SourceAuto, Outcome: OutcomeFailed, Quality: model.QualityUnusable, TargetQuality: model.QualityHigh, TimeoutSeconds: 60, Tag: "t"})
 	}
 	entries := []Entry{failure("a"), failure("b"), failure("b")}
 
 	// Act
-	got := computeExclusions(entries, now, "t")
+	got := mustCompute(t, entries, now, "t")
 
 	// Assert
 	if len(got.BelowCap) != 2 || got.BelowCap[0].Model != "b" {

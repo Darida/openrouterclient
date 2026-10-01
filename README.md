@@ -19,7 +19,7 @@ Each call goes through these steps:
    10% above the 30th-percentile estimate remain. The model list comes from
    OpenRouter's catalog, cached in memory for an hour. Catalog entries
    priced at exactly `-1` (prompt or completion) are routers, not models,
-   and are never candidates; any other negative or unparseable price panics.
+   and are never candidates; any other negative or unparseable price is an unexpected error.
 2. **Review.** A separate request asks a model to review the output as
    someone else's work, never as its own reply. A fixed system prompt
    casts it as a skeptical senior reviewer checking a junior's work and
@@ -50,7 +50,7 @@ Each call goes through these steps:
    reviewed again. Each correction sends only the latest reply and its
    violations. `MaxCorrections` caps the corrections and is required with
    rules: 0 reviews the first output without correcting it, a negative
-   value panics, and it must be 0 without rules.
+   value is an error, and it must be 0 without rules.
 4. **Track.** Every generation's quality is recorded against the model
    that produced it: the automatic review's rating, `unusable` for
    failures, timeouts, and aborts, and any manual rating from
@@ -94,7 +94,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   attempt starts when the previous one fails, or when it has been pending
   for the request's `Timeout` with no response. `Timeout` defaults to 60s
   when it's 0; `Client.GenerateText` fills that in, and a negative value
-  panics. There are at most 3 attempts. Every attempt gets `Timeout` plus
+  is an error. There are at most 3 attempts. Every attempt gets `Timeout` plus
   1s, just past the point at which a success already counts as a failure,
   whether or not another attempt has won; one still running then is a
   timeout. Both generation and review calls are hedged this way. A call
@@ -136,7 +136,7 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
   model is excluded once its weighted failures exceed any of these limits: more
   than 3 today (UTC), more than 6 in the last 7 days, more than 12 in the
   last 30 days, or more than 24 in total. Excluded models are never
-  picked; if every candidate is excluded, the call panics.
+  picked; if every candidate is excluded, the call returns an unexpected error.
 
 ## Command line
 
@@ -185,7 +185,8 @@ no API key, since rating never contacts OpenRouter.
 
 This library never falls back and never swallows a failure.
 
-- `GenerateText` returns an error in exactly two cases: every allowed
+- `GenerateText` returns an error in exactly three cases: something
+  unexpected happened (`*UnexpectedError`, below), every allowed
   attempt failed, timed out, or fell below `TargetQuality`
   (`*AttemptsExhaustedError`, which carries every attempt's reason, and
   for each output the review rejected, that output and its review; its
@@ -197,8 +198,8 @@ This library never falls back and never swallows a failure.
 - Only transient chat statuses (408, 429, 500, 502, 503, 504) count as a
   model failure, plus refusals (400, 404, 422) when another attempt in the
   same race won. Any other non-200 status means the request or the key is
-  wrong, so it panics.
-- Log lines, error messages, and panics never quote a raw OpenRouter reply.
+  wrong, so it aborts the call with an unexpected error.
+- Log lines and error messages never quote a raw OpenRouter reply.
   With `Config.Replies` set to `LocalReplies()`, each reply they refer to
   is saved in full to its own file under `openrouterclient/` in the system
   temp directory (`$TMPDIR`, else `/tmp`), and the message names that file.
@@ -207,15 +208,17 @@ This library never falls back and never swallows a failure.
   wasn't saved when there is no id (a catalog failure, or a chat response
   without `X-Generation-Id`). That covers invalid output, refusals, and for a
   rejected output, both the output and its review.
-- Anything unexpected panics, naming the file with the full raw body. That
+- Nothing panics. Anything unexpected aborts the call with
+  `*model.UnexpectedError`, naming the file with the full raw body, and no
+  further attempt starts; attempts already in flight are canceled. That
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context
   length or with an invalid price, or leaves no candidate after the context-length filter and
   exclusions, an `ExcludedModels` ID that isn't a structured-output model
   of the request's tier in the catalog, an invalid `OutputSchema`, `TargetQuality`, `ReviewToleranceThreshold`, or `Tag`, and an
-  unreadable or malformed history file. A panic inside a parallel
-  attempt crashes the process.
+  unreadable or malformed history file. A failure while recording a won
+  race's stragglers in the background is returned by `Client.Close`.
 - `New` returns an error for any missing `Config` field. Every field is
   required and none has a default; `History` and `Replies` each name their
   choice explicitly, local or disabled.
@@ -237,5 +240,5 @@ The winning reviewer's entry also names the generation it reviewed. Rating
 that reviewer low rewrites the reviewed generation's automatic entry in
 place, clearing its quality and noting why in its reason.
 Writes are serialized within the process and protected with a file lock
-across processes. A file with entries that lack a tag or timeout panics on load. The caller owns
+across processes. A file with entries that lack a tag or timeout fails to load. The caller owns
 where this file lives and whether it is committed.

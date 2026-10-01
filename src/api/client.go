@@ -13,8 +13,8 @@ import (
 // Client picks its OpenRouter model internally. Callers never pass or
 // receive a model choice, only learn which model produced a result.
 type Client interface {
-	// GenerateText returns only reviewed content. Its errors are ctx.Err() and
-	// *model.AttemptsExhaustedError; anything unexpected panics.
+	// GenerateText returns only reviewed content. Its errors are ctx.Err(),
+	// *model.AttemptsExhaustedError, and *model.UnexpectedError.
 	GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error)
 	// Rate records a manual high/medium/low rating of a generation's or a
 	// review's GenerationID in history. Rating a review low also clears the
@@ -22,8 +22,9 @@ type Client interface {
 	// unknown or already-rated id, or when history is disabled.
 	Rate(ctx context.Context, generationID string, quality model.Quality, reason string) error
 	// Close blocks until attempts still settling after GenerateText returned
-	// are recorded in history. Call it once, before the process exits.
-	Close()
+	// are recorded in history, and returns a *model.UnexpectedError if
+	// recording any of them failed. Call it once, before the process exits.
+	Close() error
 }
 
 // DefaultTimeout is the timeout for a request whose Timeout is 0.
@@ -46,6 +47,13 @@ func New(cfg Config) (Client, error) {
 
 type client struct {
 	*engine.Engine
+}
+
+func (c *client) Close() error {
+	if err := c.Engine.Close(); err != nil {
+		return &model.UnexpectedError{Err: err}
+	}
+	return nil
 }
 
 func (c *client) GenerateText(ctx context.Context, requirements model.TextGenerationRequirements) (model.GeneratedText, error) {

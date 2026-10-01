@@ -21,12 +21,14 @@ func TestDisabledExclusions_whenFailuresAppended_thenExcludesNothing(t *testing.
 	// Arrange
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 	history := Disabled{}
-	for _, e := range failedEntries(5, now, "t") {
-		history.Append(e)
+	for _, e := range failedEntries(t, 5, now, "t") {
+		if err := history.Append(e); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Act
-	got := history.Exclusions(now, "t")
+	got := mustExclusions(t, history, now, "t")
 
 	// Assert
 	if len(got.Excluded) != 0 {

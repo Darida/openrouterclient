@@ -28,9 +28,13 @@ func main() {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
+	history, err := api.LocalHistory(*historyPath)
+	if err != nil {
+		fail(err.Error())
+	}
 	client, err := api.New(api.Config{
 		APIKey:  apiKey,
-		History: api.LocalHistory(*historyPath),
+		History: history,
 		Replies: api.LocalReplies(),
 		Logger:  logger,
 	})
@@ -47,7 +51,12 @@ func main() {
 		printJSON(os.Stdout, result)
 	}
 	// Stragglers from won races are still being recorded; exiting first would drop them.
-	client.Close()
+	if closeErr := client.Close(); closeErr != nil {
+		logger.Error("generate: recording stragglers failed", "err", closeErr)
+		if err == nil {
+			fail(closeErr.Error())
+		}
+	}
 	if err != nil {
 		var exhausted *model.AttemptsExhaustedError
 		if errors.As(err, &exhausted) {

@@ -31,7 +31,7 @@ type TextGenerationRequirements struct {
 	// How many corrections may follow a review that rates the output below
 	// TargetQuality, each one regenerated with the review's violations and reviewed
 	// again. Required when OutputValidationRules is set: 0 reviews the first
-	// output without correcting it; negative panics. Must be 0 when
+	// output without correcting it; negative is an error. Must be 0 when
 	// OutputValidationRules is empty.
 	MaxCorrections int
 	// The lowest acceptable quality: high, medium, or low. A reviewed result
@@ -42,7 +42,7 @@ type TextGenerationRequirements struct {
 	Tag       string
 	ModelTier ModelTier
 	// Exact model IDs never asked, for generation or review. An ID that isn't
-	// a structured-output ModelTier model in OpenRouter's catalog panics.
+	// a structured-output ModelTier model in OpenRouter's catalog is an error.
 	ExcludedModels []string
 	// How long an attempt may stay pending before the next one starts, and
 	// how long a success may take before it counts against its model. Each

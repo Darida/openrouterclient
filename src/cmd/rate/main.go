@@ -20,7 +20,11 @@ func main() {
 		fail("--history, --id, --quality, and --reason are all required")
 	}
 
-	rater, err := api.NewRater(api.LocalHistory(*historyPath))
+	history, err := api.LocalHistory(*historyPath)
+	if err != nil {
+		fail(err.Error())
+	}
+	rater, err := api.NewRater(history)
 	if err != nil {
 		fail(err.Error())
 	}

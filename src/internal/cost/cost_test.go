@@ -37,10 +37,10 @@ func TestCheapestPool_whenPricesSpread_thenKeepsOnlyThoseNearThe30thPercentile(t
 	}
 
 	// Act
-	pool, _ := CheapestPool(models, 0, 1)
+	pool, _, err := CheapestPool(models, 0, 1)
 
 	// Assert
-	if len(pool) != 4 {
+	if err != nil || len(pool) != 4 {
 		t.Fatalf("pool = %v; the 30th percentile is 4, ×1.1 = 4.4, so a–d should remain", pool)
 	}
 }
