@@ -736,20 +736,37 @@ func TestEngineGenerateReviewed_whenOnlyGenerationModelsAllowed_thenReviewerKeep
 	}
 }
 
-func TestEngineCandidateModels_whenDenied_thenListsTheRestOfEveryTier(t *testing.T) {
+func TestEngineCandidateModels_whenDenied_thenListsOnlyTheCheapestOfTheRest(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 	denying := unreviewed
-	denying.Models = model.ModelSelection{Denied: []string{"cheap/model"}}
+	denying.Models = model.ModelSelection{Denied: []string{pickedModel}}
 
 	// Act
 	candidates, err := engine.CandidateModels(denying)
 
 	// Assert
-	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel, "pricey/model"}) {
-		t.Fatalf("candidates=%v, %v; want [%s pricey/model]", candidates, err, pickedModel)
+	if err != nil || !reflect.DeepEqual(candidates, []string{"cheap/model"}) {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
+	}
+}
+
+func TestEngineCandidateModels_whenAllowed_thenListsOnlyTheCheapestOfThem(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	allowing := unreviewed
+	allowing.Models = model.ModelSelection{Allowed: []string{"cheap/model", "pricey/model"}}
+
+	// Act
+	candidates, err := engine.CandidateModels(allowing)
+
+	// Assert
+	if err != nil || !reflect.DeepEqual(candidates, []string{"cheap/model"}) {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
 	}
 }
 
@@ -854,7 +871,7 @@ func TestEngineValidateSelection_whenTierAndDeniedBothSet_thenErrors(t *testing.
 	}
 }
 
-func TestEngineCandidateModels_whenSelectionEmpty_thenListsEveryModelThatFits(t *testing.T) {
+func TestEngineCandidateModels_whenSelectionEmpty_thenListsOnlyTheCheapestOfEveryModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{}
 	_, settings := fake.serve(t)
@@ -866,8 +883,8 @@ func TestEngineCandidateModels_whenSelectionEmpty_thenListsEveryModelThatFits(t 
 	candidates, err := engine.CandidateModels(everyModel)
 
 	// Assert
-	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel, "cheap/model", "pricey/model"}) {
-		t.Fatalf("candidates=%v, %v; want [%s cheap/model pricey/model]", candidates, err, pickedModel)
+	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel}) {
+		t.Fatalf("candidates=%v, %v; want [%s], the only one priced near the cheapest", candidates, err, pickedModel)
 	}
 }
 
