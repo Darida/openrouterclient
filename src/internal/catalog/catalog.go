@@ -65,6 +65,19 @@ func (c *Catalog) Candidates(tier model.ModelTier) ([]Model, error) {
 	return candidates, nil
 }
 
+// AllCandidates lists the candidates of every tier.
+func (c *Catalog) AllCandidates() ([]Model, error) {
+	var all []Model
+	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
+		candidates, err := c.Candidates(tier)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, candidates...)
+	}
+	return all, nil
+}
+
 func (c *Catalog) candidate(m entry) (Model, error) {
 	if m.ContextLength <= 0 {
 		return Model{}, c.unexpected(fmt.Sprintf("model %q has no context length", m.ID))

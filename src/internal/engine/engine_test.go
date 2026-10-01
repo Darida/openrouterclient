@@ -22,19 +22,33 @@ import (
 	"github.com/Darida/openrouterclient/src/model"
 )
 
-var requirements = model.TextGenerationRequirements{
-	Prompt: "Name a fruit.",
-	OutputSchema: model.JSONSchema{
-		Name:   "fruit",
-		Schema: json.RawMessage(`{"type":"object","properties":{"fruit":{"type":"string"}},"required":["fruit"],"additionalProperties":false}`),
-	},
-	OutputValidationRules:    "1. The fruit must be yellow.",
-	ReviewToleranceThreshold: 3,
-	MaxCorrections:           2,
-	TargetQuality:            model.QualityHigh,
-	Tag:                      "fruit-test",
-	ModelTier:                model.ModelTierFree,
-	Timeout:                  200 * time.Millisecond,
+const (
+	testTag     = "fruit-test"
+	testTimeout = 200 * time.Millisecond
+)
+
+var freeTier = model.ModelSelection{Tier: model.ModelTierFree}
+
+var fruitSchema = model.JSONSchema{
+	Name:   "fruit",
+	Schema: json.RawMessage(`{"type":"object","properties":{"fruit":{"type":"string"}},"required":["fruit"],"additionalProperties":false}`),
+}
+
+var reviewed = model.GenerateReviewedRequest{
+	Prompt:           "Name a fruit.",
+	OutputSchema:     fruitSchema,
+	GenerationModels: freeTier,
+	ReviewModels:     freeTier,
+	Criteria:         model.ReviewCriteria{Rules: "1. The fruit must be yellow.", ToleranceThreshold: 3},
+	MaxCorrections:   2,
+	TargetQuality:    model.QualityHigh,
+}
+
+var unreviewed = model.GenerateRequest{
+	Prompt:        "Name a fruit.",
+	OutputSchema:  fruitSchema,
+	Models:        freeTier,
+	TargetQuality: model.QualityHigh,
 }
 
 // The fake catalog's only candidate, so every attempt picks it.
@@ -121,7 +135,7 @@ func newEngine(t *testing.T, settings Settings) (*Engine, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine := New(settings, "key", store, replyfile.Local(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	engine := New(settings, "key", testTag, testTimeout, store, replyfile.Local(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() {
 		if err := engine.Close(); err != nil {
 			t.Error(err)
@@ -142,7 +156,7 @@ func readHistory(t *testing.T, path string) []history.Entry {
 	return entries
 }
 
-func TestEngineGenerateText_whenReviewHasNoViolations_thenReturnsHighQuality(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewHasNoViolations_thenReturnsHighQuality(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -154,15 +168,15 @@ func TestEngineGenerateText_whenReviewHasNoViolations_thenReturnsHighQuality(t *
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	got, err := engine.GenerateText(context.Background(), requirements)
+	got, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
-	if err != nil || got.Review == nil || got.Review.Quality != model.QualityHigh || got.Model != pickedModel {
+	if err != nil || got.Review.Quality != model.QualityHigh || got.Model != pickedModel {
 		t.Fatalf("got %+v, %v; want high quality from %s", got, err, pickedModel)
 	}
 }
 
-func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesViolations(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewBelowTarget_thenCorrectionCarriesViolations(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -179,7 +193,7 @@ func TestEngineGenerateText_whenReviewBelowTarget_thenCorrectionCarriesViolation
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	if err != nil || len(fake.generations) != 2 || !strings.Contains(fake.generations[1].Messages[2].Content, "Apples are not yellow.") {
@@ -196,16 +210,16 @@ func alwaysBelowTarget() *fakeOpenRouter {
 	}
 }
 
-func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneCorrection := requirements
+	oneCorrection := reviewed
 	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneCorrection)
+	_, err := engine.GenerateReviewed(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -214,16 +228,16 @@ func TestEngineGenerateText_whenEveryRoundBelowTarget_thenAttemptsExhausted(t *t
 	}
 }
 
-func TestEngineGenerateText_whenMaxCorrectionsSet_thenGeneratesOncePlusCorrections(t *testing.T) {
+func TestEngineGenerateReviewed_whenMaxCorrectionsSet_thenGeneratesOncePlusCorrections(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	threeCorrections := requirements
+	threeCorrections := reviewed
 	threeCorrections.MaxCorrections = 3
 
 	// Act
-	engine.GenerateText(context.Background(), threeCorrections)
+	engine.GenerateReviewed(context.Background(), threeCorrections)
 
 	// Assert
 	if len(fake.generations) != 4 {
@@ -231,16 +245,16 @@ func TestEngineGenerateText_whenMaxCorrectionsSet_thenGeneratesOncePlusCorrectio
 	}
 }
 
-func TestEngineGenerateText_whenMaxCorrectionsZero_thenGeneratesOnce(t *testing.T) {
+func TestEngineGenerateReviewed_whenMaxCorrectionsZero_thenGeneratesOnce(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	noCorrections := requirements
+	noCorrections := reviewed
 	noCorrections.MaxCorrections = 0
 
 	// Act
-	engine.GenerateText(context.Background(), noCorrections)
+	engine.GenerateReviewed(context.Background(), noCorrections)
 
 	// Assert
 	if len(fake.generations) != 1 {
@@ -248,13 +262,13 @@ func TestEngineGenerateText_whenMaxCorrectionsZero_thenGeneratesOnce(t *testing.
 	}
 }
 
-func TestEngineValidateRequirements_whenMaxCorrectionsNegative_thenErrors(t *testing.T) {
+func TestEngineValidateGenerateReviewed_whenMaxCorrectionsNegative_thenErrors(t *testing.T) {
 	// Arrange
-	negative := requirements
+	negative := reviewed
 	negative.MaxCorrections = -1
 
 	// Act
-	err := validateRequirements(negative)
+	err := validateGenerateReviewed(negative)
 
 	// Assert
 	if err == nil {
@@ -262,15 +276,13 @@ func TestEngineValidateRequirements_whenMaxCorrectionsNegative_thenErrors(t *tes
 	}
 }
 
-func TestEngineValidateRequirements_whenMaxCorrectionsSetWithoutRules_thenErrors(t *testing.T) {
+func TestEngineValidateGenerateReviewed_whenRulesEmpty_thenErrors(t *testing.T) {
 	// Arrange
-	unreviewed := requirements
-	unreviewed.OutputValidationRules = ""
-	unreviewed.ReviewToleranceThreshold = 0
-	unreviewed.MaxCorrections = 1
+	ruleless := reviewed
+	ruleless.Criteria.Rules = ""
 
 	// Act
-	err := validateRequirements(unreviewed)
+	err := validateGenerateReviewed(ruleless)
 
 	// Assert
 	if err == nil {
@@ -278,7 +290,7 @@ func TestEngineValidateRequirements_whenMaxCorrectionsSetWithoutRules_thenErrors
 	}
 }
 
-func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedModel(t *testing.T) {
+func TestEngineGenerateReviewed_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -295,8 +307,8 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedM
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -314,7 +326,7 @@ func TestEngineGenerateText_whenAttemptTimesOut_thenRecordsTimeoutAgainstPickedM
 	t.Fatalf("history %+v has no timeout entry for slow/model:free", entries)
 }
 
-func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t *testing.T) {
+func TestEngineGenerateReviewed_whenOutputViolatesSchema_thenRecordsInvalidOutput(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -328,8 +340,8 @@ func TestEngineGenerateText_whenOutputViolatesSchema_thenRecordsInvalidOutput(t 
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -357,9 +369,9 @@ func TestEngineRate_whenGenerationReturned_thenRecordsManualRating(t *testing.T)
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	got, err := engine.GenerateText(context.Background(), requirements)
+	got, err := engine.GenerateReviewed(context.Background(), reviewed)
 	if err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -380,7 +392,7 @@ func overloadedFirst(w http.ResponseWriter, r *http.Request, n int) {
 	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 }
 
-func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResendsAndWins(t *testing.T) {
+func TestEngineGenerateReviewed_whenProviderRejectsIn200Body_thenFirstAttemptResendsAndWins(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: overloadedFirst, review: noViolations}
 	_, settings := fake.serve(t)
@@ -388,7 +400,7 @@ func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResends
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	got, err := engine.GenerateText(context.Background(), requirements)
+	got, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	if err != nil || got.GenerationID != "gen-2" {
@@ -396,13 +408,13 @@ func TestEngineGenerateText_whenProviderRejectsIn200Body_thenFirstAttemptResends
 	}
 }
 
-func TestEngineGenerateText_whenProviderRejectsIn200Body_thenRecordsNothingForIt(t *testing.T) {
+func TestEngineGenerateReviewed_whenProviderRejectsIn200Body_thenRecordsNothingForIt(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: overloadedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -429,13 +441,13 @@ func rateLimitedFirst(w http.ResponseWriter, r *http.Request, n int) {
 	reply(w, "gen-2", "writer/free", `{"fruit":"banana"}`)
 }
 
-func TestEngineGenerateText_whenRateLimited_thenRecordsFailureAgainstPickedModel(t *testing.T) {
+func TestEngineGenerateReviewed_whenRateLimited_thenRecordsFailureAgainstPickedModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: rateLimitedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -470,13 +482,13 @@ func refusedFirst(w http.ResponseWriter, r *http.Request, n int) {
 
 func alwaysRefused(w http.ResponseWriter, r *http.Request, n int) { refuse(w) }
 
-func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRefusalAgainstPickedModel(t *testing.T) {
+func TestEngineGenerateReviewed_whenModelRefusesAndAnotherAttemptWins_thenRecordsRefusalAgainstPickedModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: refusedFirst, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -494,14 +506,14 @@ func TestEngineGenerateText_whenModelRefusesAndAnotherAttemptWins_thenRecordsRef
 	t.Fatalf("history %+v has no unusable refused entry for %s", entries, pickedModel)
 }
 
-func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: alwaysRefused, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -515,13 +527,13 @@ func TestEngineGenerateText_whenEveryAttemptRefused_thenReturnsRefusedAttempts(t
 	}
 }
 
-func TestEngineGenerateText_whenEveryAttemptRefused_thenRecordsNoRefusal(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryAttemptRefused_thenRecordsNoRefusal(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: alwaysRefused, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err == nil {
-		t.Fatal("setup: GenerateText succeeded, want every attempt refused")
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err == nil {
+		t.Fatal("setup: GenerateReviewed succeeded, want every attempt refused")
 	}
 
 	// Act
@@ -536,7 +548,7 @@ func TestEngineGenerateText_whenEveryAttemptRefused_thenRecordsNoRefusal(t *test
 	}
 }
 
-func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *testing.T) {
+func TestEngineGenerate_whenCalled_thenNeverSendsReview(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -546,21 +558,17 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenNeverSendsReview(t *tes
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	unreviewed := requirements
-	unreviewed.OutputValidationRules = ""
-	unreviewed.ReviewToleranceThreshold = 0
-	unreviewed.MaxCorrections = 0
 
 	// Act
-	got, err := engine.GenerateText(context.Background(), unreviewed)
+	got, err := engine.Generate(context.Background(), unreviewed)
 
 	// Assert
-	if err != nil || got.Review != nil || len(fake.reviews) != 0 {
+	if err != nil || got.GenerationID != "gen-1" || len(fake.reviews) != 0 {
 		t.Fatalf("got %+v, %v, %d reviews; want unreviewed content", got, err, len(fake.reviews))
 	}
 }
 
-func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryOutputViolatesSchema_thenNeverSendsReview(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -572,7 +580,7 @@ func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -581,7 +589,7 @@ func TestEngineGenerateText_whenEveryOutputViolatesSchema_thenNeverSendsReview(t
 	}
 }
 
-func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh(t *testing.T) {
+func TestEngineGenerate_whenWon_thenRecordsGenerationAsHigh(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -591,12 +599,8 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	unreviewed := requirements
-	unreviewed.OutputValidationRules = ""
-	unreviewed.ReviewToleranceThreshold = 0
-	unreviewed.MaxCorrections = 0
-	if _, err := engine.GenerateText(context.Background(), unreviewed); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.Generate(context.Background(), unreviewed); err != nil {
+		t.Fatalf("setup: Generate failed: %v", err)
 	}
 
 	// Act
@@ -614,7 +618,7 @@ func TestEngineGenerateText_whenValidationRulesEmpty_thenRecordsGenerationAsHigh
 	t.Fatalf("history %+v has no high entry for gen-1", entries)
 }
 
-func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testing.T) {
+func TestEngineGenerateReviewed_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -624,11 +628,11 @@ func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testin
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	paid := requirements
-	paid.ModelTier = model.ModelTierPaid
+	paid := reviewed
+	paid.GenerationModels = model.ModelSelection{Tier: model.ModelTierPaid}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), paid)
+	_, err := engine.GenerateReviewed(context.Background(), paid)
 
 	// Assert
 	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "cheap/model" {
@@ -636,7 +640,7 @@ func TestEngineGenerateText_whenPaidTier_thenAsksOnlyTheCheapPaidModel(t *testin
 	}
 }
 
-func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *testing.T) {
+func TestEngineGenerateReviewed_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -646,11 +650,11 @@ func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	paid := requirements
-	paid.ModelTier = model.ModelTierPaid
+	paid := reviewed
+	paid.GenerationModels = model.ModelSelection{Tier: model.ModelTierPaid}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), paid)
+	_, err := engine.GenerateReviewed(context.Background(), paid)
 
 	// Assert
 	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model == "tiny/model" {
@@ -658,45 +662,56 @@ func TestEngineGenerateText_whenCheapestModelContextTooSmall_thenNeverAsksIt(t *
 	}
 }
 
-func TestEngineGenerateText_whenCheapestModelExcluded_thenAsksNextCheapest(t *testing.T) {
-	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
-		},
-		review: noViolations,
-	}
-	_, settings := fake.serve(t)
-	engine, _ := newEngine(t, settings)
-	paid := requirements
-	paid.ModelTier = model.ModelTierPaid
-	paid.ExcludedModels = []string{"cheap/model"}
-
-	// Act
-	_, err := engine.GenerateText(context.Background(), paid)
-
-	// Assert
-	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "pricey/model" {
-		t.Fatalf("err=%v generations=%+v; want one request to pricey/model", err, fake.generations)
+func bananaFrom(modelID string) func(w http.ResponseWriter, r *http.Request, n int) {
+	return func(w http.ResponseWriter, r *http.Request, n int) {
+		reply(w, fmt.Sprintf("gen-%d", n), modelID, `{"fruit":"banana"}`)
 	}
 }
 
-func TestEngineGenerateText_whenCheapestModelExcluded_thenReviewerNeverAsksIt(t *testing.T) {
+func TestEngineGenerateReviewed_whenGenerationModelsDenied_thenAsksOnlyTheRest(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			reply(w, "gen-1", "pricey/model", `{"fruit":"banana"}`)
-		},
-		review: noViolations,
-	}
+	fake := &fakeOpenRouter{generate: bananaFrom("pricey/model"), review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	paid := requirements
-	paid.ModelTier = model.ModelTierPaid
-	paid.ExcludedModels = []string{"cheap/model"}
+	denying := reviewed
+	denying.GenerationModels = model.ModelSelection{Denied: []string{pickedModel, "cheap/model"}}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), paid)
+	_, err := engine.GenerateReviewed(context.Background(), denying)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "pricey/model" {
+		t.Fatalf("err=%v generations=%+v; want one request to pricey/model, the only undenied model with enough context", err, fake.generations)
+	}
+}
+
+func TestEngineGenerateReviewed_whenGenerationModelsAllowed_thenAsksOnlyThem(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom("cheap/model"), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	allowing := reviewed
+	allowing.GenerationModels = model.ModelSelection{Allowed: []string{"cheap/model"}}
+
+	// Act
+	_, err := engine.GenerateReviewed(context.Background(), allowing)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || fake.generations[0].Model != "cheap/model" {
+		t.Fatalf("err=%v generations=%+v; want one request to cheap/model", err, fake.generations)
+	}
+}
+
+func TestEngineGenerateReviewed_whenReviewModelsAllowed_thenReviewerAsksOnlyThem(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	allowing := reviewed
+	allowing.ReviewModels = model.ModelSelection{Allowed: []string{"pricey/model"}}
+
+	// Act
+	_, err := engine.GenerateReviewed(context.Background(), allowing)
 
 	// Assert
 	if err != nil || len(fake.reviews) != 1 || fake.reviews[0].Model != "pricey/model" {
@@ -704,21 +719,54 @@ func TestEngineGenerateText_whenCheapestModelExcluded_thenReviewerNeverAsksIt(t 
 	}
 }
 
-func TestEngineCandidateModels_whenCheapestModelExcluded_thenListsNextCheapest(t *testing.T) {
+func TestEngineGenerateReviewed_whenOnlyGenerationModelsAllowed_thenReviewerKeepsItsOwnSelection(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom("cheap/model"), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	allowing := reviewed
+	allowing.GenerationModels = model.ModelSelection{Allowed: []string{"cheap/model"}}
+
+	// Act
+	_, err := engine.GenerateReviewed(context.Background(), allowing)
+
+	// Assert
+	if err != nil || len(fake.reviews) != 1 || fake.reviews[0].Model != pickedModel {
+		t.Fatalf("err=%v reviews=%+v; want one review request to the free tier's %s", err, fake.reviews, pickedModel)
+	}
+}
+
+func TestEngineCandidateModels_whenDenied_thenListsTheRestOfEveryTier(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	paid := requirements
-	paid.ModelTier = model.ModelTierPaid
-	paid.ExcludedModels = []string{"cheap/model"}
+	denying := unreviewed
+	denying.Models = model.ModelSelection{Denied: []string{"cheap/model"}}
+
+	// Act
+	candidates, err := engine.CandidateModels(denying)
+
+	// Assert
+	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel, "pricey/model"}) {
+		t.Fatalf("candidates=%v, %v; want [%s pricey/model]", candidates, err, pickedModel)
+	}
+}
+
+func TestEngineCandidateModels_whenPaidTier_thenListsOnlyTheCheapest(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	paid := unreviewed
+	paid.Models = model.ModelSelection{Tier: model.ModelTierPaid}
 
 	// Act
 	candidates, err := engine.CandidateModels(paid)
 
 	// Assert
-	if err != nil || !reflect.DeepEqual(candidates, []string{"pricey/model"}) {
-		t.Fatalf("candidates=%v; want [pricey/model]", candidates)
+	if err != nil || !reflect.DeepEqual(candidates, []string{"cheap/model"}) {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
 	}
 }
 
@@ -729,7 +777,7 @@ func TestEngineCandidateModels_whenListing_thenSendsNoChatRequest(t *testing.T) 
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	if _, err := engine.CandidateModels(requirements); err != nil {
+	if _, err := engine.CandidateModels(unreviewed); err != nil {
 		t.Fatal(err)
 	}
 
@@ -739,21 +787,16 @@ func TestEngineCandidateModels_whenListing_thenSendsNoChatRequest(t *testing.T) 
 	}
 }
 
-func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenReturnsUnexpectedError(t *testing.T) {
+func TestEngineGenerateReviewed_whenAllowedModelNotInCatalog_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
-		},
-		review: noViolations,
-	}
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	unknown := requirements
-	unknown.ExcludedModels = []string{"missing/model:free"}
+	unknown := reviewed
+	unknown.GenerationModels = model.ModelSelection{Allowed: []string{"missing/model:free"}}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), unknown)
+	_, err := engine.GenerateReviewed(context.Background(), unknown)
 
 	// Assert
 	var unexpected *model.UnexpectedError
@@ -762,21 +805,16 @@ func TestEngineGenerateText_whenExcludedModelNotInCatalog_thenReturnsUnexpectedE
 	}
 }
 
-func TestEngineGenerateText_whenExcludedModelInOtherTier_thenReturnsUnexpectedError(t *testing.T) {
+func TestEngineGenerate_whenDeniedModelNotInCatalog_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
-		},
-		review: noViolations,
-	}
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	otherTier := requirements
-	otherTier.ExcludedModels = []string{"cheap/model"}
+	unknown := unreviewed
+	unknown.Models = model.ModelSelection{Denied: []string{"missing/model:free"}}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), otherTier)
+	_, err := engine.Generate(context.Background(), unknown)
 
 	// Assert
 	var unexpected *model.UnexpectedError
@@ -785,21 +823,16 @@ func TestEngineGenerateText_whenExcludedModelInOtherTier_thenReturnsUnexpectedEr
 	}
 }
 
-func TestEngineGenerateText_whenEveryCandidateExcluded_thenReturnsUnexpectedError(t *testing.T) {
+func TestEngineGenerate_whenEveryModelDenied_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
-	fake := &fakeOpenRouter{
-		generate: func(w http.ResponseWriter, r *http.Request, n int) {
-			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
-		},
-		review: noViolations,
-	}
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	allExcluded := requirements
-	allExcluded.ExcludedModels = []string{pickedModel}
+	allDenied := unreviewed
+	allDenied.Models = model.ModelSelection{Denied: []string{pickedModel, "tiny/model", "cheap/model", "pricey/model"}}
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), allExcluded)
+	_, err := engine.Generate(context.Background(), allDenied)
 
 	// Assert
 	var unexpected *model.UnexpectedError
@@ -808,13 +841,12 @@ func TestEngineGenerateText_whenEveryCandidateExcluded_thenReturnsUnexpectedErro
 	}
 }
 
-func TestEngineValidateRequirements_whenRulesSetWithoutThreshold_thenErrors(t *testing.T) {
+func TestEngineValidateSelection_whenTierAndDeniedBothSet_thenErrors(t *testing.T) {
 	// Arrange
-	unthresholded := requirements
-	unthresholded.ReviewToleranceThreshold = 0
+	both := model.ModelSelection{Tier: model.ModelTierPaid, Denied: []string{"cheap/model"}}
 
 	// Act
-	err := validateRequirements(unthresholded)
+	err := validateSelection("Models", both)
 
 	// Assert
 	if err == nil {
@@ -822,14 +854,9 @@ func TestEngineValidateRequirements_whenRulesSetWithoutThreshold_thenErrors(t *t
 	}
 }
 
-func TestEngineValidateRequirements_whenThresholdSetWithoutRules_thenErrors(t *testing.T) {
-	// Arrange
-	unreviewed := requirements
-	unreviewed.OutputValidationRules = ""
-	unreviewed.MaxCorrections = 0
-
+func TestEngineValidateSelection_whenNothingSet_thenErrors(t *testing.T) {
 	// Act
-	err := validateRequirements(unreviewed)
+	err := validateSelection("Models", model.ModelSelection{})
 
 	// Assert
 	if err == nil {
@@ -837,7 +864,35 @@ func TestEngineValidateRequirements_whenThresholdSetWithoutRules_thenErrors(t *t
 	}
 }
 
-func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testing.T) {
+func TestEngineValidateGenerateReviewed_whenThresholdZero_thenErrors(t *testing.T) {
+	// Arrange
+	unthresholded := reviewed
+	unthresholded.Criteria.ToleranceThreshold = 0
+
+	// Act
+	err := validateGenerateReviewed(unthresholded)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestEngineValidateGenerate_whenTargetQualityMissing_thenErrors(t *testing.T) {
+	// Arrange
+	untargeted := unreviewed
+	untargeted.TargetQuality = ""
+
+	// Act
+	err := validateGenerate(untargeted)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestEngineGenerateReviewed_whenBadScoreWithinThreshold_thenRatesMedium(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -849,29 +904,15 @@ func TestEngineGenerateText_whenBadScoreWithinThreshold_thenRatesMedium(t *testi
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	mediumTarget := requirements
+	mediumTarget := reviewed
 	mediumTarget.TargetQuality = model.QualityMedium
 
 	// Act
-	got, err := engine.GenerateText(context.Background(), mediumTarget)
+	got, err := engine.GenerateReviewed(context.Background(), mediumTarget)
 
 	// Assert
-	if err != nil || got.Review == nil || got.Review.Quality != model.QualityMedium {
+	if err != nil || got.Review.Quality != model.QualityMedium {
 		t.Fatalf("got %+v, %v; want medium quality", got, err)
-	}
-}
-
-func TestEngineValidateRequirements_whenTimeoutZero_thenErrors(t *testing.T) {
-	// Arrange
-	untimed := requirements
-	untimed.Timeout = 0
-
-	// Act
-	err := validateRequirements(untimed)
-
-	// Assert
-	if err == nil {
-		t.Fatal("expected an error")
 	}
 }
 
@@ -891,8 +932,8 @@ func correctedOnce(t *testing.T) *fakeOpenRouter {
 	}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 	return fake
 }
@@ -905,7 +946,7 @@ func roles(req chatRequest) []string {
 	return got
 }
 
-func TestEngineGenerateText_whenReviewing_thenSendsSystemUserUserMessages(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewing_thenSendsSystemUserUserMessages(t *testing.T) {
 	// Arrange
 	fake := correctedOnce(t)
 
@@ -918,7 +959,7 @@ func TestEngineGenerateText_whenReviewing_thenSendsSystemUserUserMessages(t *tes
 	}
 }
 
-func TestEngineGenerateText_whenReviewing_thenNeverSendsAssistantMessage(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewing_thenNeverSendsAssistantMessage(t *testing.T) {
 	// Arrange
 	fake := correctedOnce(t)
 
@@ -938,7 +979,7 @@ func TestEngineGenerateText_whenReviewing_thenNeverSendsAssistantMessage(t *test
 	}
 }
 
-func TestEngineGenerateText_whenReviewing_thenSystemMessageCarriesValidationRules(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewing_thenSystemMessageCarriesValidationRules(t *testing.T) {
 	// Arrange
 	fake := correctedOnce(t)
 
@@ -946,12 +987,12 @@ func TestEngineGenerateText_whenReviewing_thenSystemMessageCarriesValidationRule
 	system := fake.reviews[0].Messages[0].Content
 
 	// Assert
-	if !strings.Contains(system, requirements.OutputValidationRules) {
+	if !strings.Contains(system, reviewed.Criteria.Rules) {
 		t.Fatalf("system message %q lacks the validation rules", system)
 	}
 }
 
-func TestEngineGenerateText_whenReviewing_thenUserMessagesCarryPromptThenOutput(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewing_thenUserMessagesCarryPromptThenOutput(t *testing.T) {
 	// Arrange
 	fake := correctedOnce(t)
 
@@ -959,12 +1000,12 @@ func TestEngineGenerateText_whenReviewing_thenUserMessagesCarryPromptThenOutput(
 	messages := fake.reviews[1].Messages
 
 	// Assert
-	if !strings.Contains(messages[1].Content, requirements.Prompt) || !strings.Contains(messages[2].Content, `{"fruit":"apple-2"}`) {
+	if !strings.Contains(messages[1].Content, reviewed.Prompt) || !strings.Contains(messages[2].Content, `{"fruit":"apple-2"}`) {
 		t.Fatalf("review messages %+v; want the prompt, then the second generation's output", messages)
 	}
 }
 
-func TestEngineGenerateText_whenCorrecting_thenGeneratorContinuesItsOwnConversation(t *testing.T) {
+func TestEngineGenerateReviewed_whenCorrecting_thenGeneratorContinuesItsOwnConversation(t *testing.T) {
 	// Arrange
 	fake := correctedOnce(t)
 
@@ -972,12 +1013,12 @@ func TestEngineGenerateText_whenCorrecting_thenGeneratorContinuesItsOwnConversat
 	correction := fake.generations[1]
 
 	// Assert
-	if strings.Join(roles(correction), ",") != "user,assistant,user" || correction.Messages[0].Content != requirements.Prompt || correction.Messages[1].Content != `{"fruit":"apple-1"}` {
+	if strings.Join(roles(correction), ",") != "user,assistant,user" || correction.Messages[0].Content != reviewed.Prompt || correction.Messages[1].Content != `{"fruit":"apple-1"}` {
 		t.Fatalf("correction messages %+v; want the prompt, the first output as assistant, then the violations", correction.Messages)
 	}
 }
 
-func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGeneration(t *testing.T) {
+func TestEngineGenerateReviewed_whenReviewWins_thenReviewerEntryLinksReviewedGeneration(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -987,8 +1028,8 @@ func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGenerat
 	}
 	_, settings := fake.serve(t)
 	engine, path := newEngine(t, settings)
-	if _, err := engine.GenerateText(context.Background(), requirements); err != nil {
-		t.Fatalf("setup: GenerateText failed: %v", err)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
 	}
 
 	// Act
@@ -1006,16 +1047,16 @@ func TestEngineGenerateText_whenReviewWins_thenReviewerEntryLinksReviewedGenerat
 	t.Fatalf("history = %+v; want the reviewer entry linked to gen-1", entries)
 }
 
-func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewGenerationID(t *testing.T) {
+func TestEngineGenerateReviewed_whenRoundBelowTarget_thenFailedAttemptCarriesReviewGenerationID(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneCorrection := requirements
+	oneCorrection := reviewed
 	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneCorrection)
+	_, err := engine.GenerateReviewed(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1024,16 +1065,16 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewG
 	}
 }
 
-func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesRejectedContent(t *testing.T) {
+func TestEngineGenerateReviewed_whenRoundBelowTarget_thenFailedAttemptCarriesRejectedContent(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneCorrection := requirements
+	oneCorrection := reviewed
 	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneCorrection)
+	_, err := engine.GenerateReviewed(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1042,16 +1083,16 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesRejecte
 	}
 }
 
-func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewVerdict(t *testing.T) {
+func TestEngineGenerateReviewed_whenRoundBelowTarget_thenFailedAttemptCarriesReviewVerdict(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	oneCorrection := requirements
+	oneCorrection := reviewed
 	oneCorrection.MaxCorrections = 1
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), oneCorrection)
+	_, err := engine.GenerateReviewed(context.Background(), oneCorrection)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1061,7 +1102,7 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenFailedAttemptCarriesReviewV
 	}
 }
 
-func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -1073,7 +1114,7 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *tes
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1082,7 +1123,7 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonOmitsReply(t *tes
 	}
 }
 
-func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingReply(t *testing.T) {
+func TestEngineGenerateReviewed_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingReply(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{
 		generate: func(w http.ResponseWriter, r *http.Request, n int) {
@@ -1094,7 +1135,7 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingR
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1108,14 +1149,14 @@ func TestEngineGenerateText_whenEveryOutputIsNotJSON_thenReasonNamesFileHoldingR
 	}
 }
 
-func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRejectedOutput(t *testing.T) {
+func TestEngineGenerateReviewed_whenRoundBelowTarget_thenReasonNamesFileHoldingRejectedOutput(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1130,14 +1171,14 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRejec
 	}
 }
 
-func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingReview(t *testing.T) {
+func TestEngineGenerateReviewed_whenRoundBelowTarget_thenReasonNamesFileHoldingReview(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1151,7 +1192,7 @@ func TestEngineGenerateText_whenRoundBelowTarget_thenReasonNamesFileHoldingRevie
 	}
 }
 
-func TestEngineGenerateText_whenRepliesDisabledAndRoundBelowTarget_thenReasonNamesGenerationID(t *testing.T) {
+func TestEngineGenerateReviewed_whenRepliesDisabledAndRoundBelowTarget_thenReasonNamesGenerationID(t *testing.T) {
 	// Arrange
 	fake := alwaysBelowTarget()
 	_, settings := fake.serve(t)
@@ -1163,7 +1204,7 @@ func TestEngineGenerateText_whenRepliesDisabledAndRoundBelowTarget_thenReasonNam
 	})
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var exhausted *model.AttemptsExhaustedError
@@ -1180,14 +1221,14 @@ func unauthorized(w http.ResponseWriter, r *http.Request, n int) {
 	fmt.Fprint(w, `{"error":{"message":"No auth credentials found","code":401}}`)
 }
 
-func TestEngineGenerateText_whenChatReturnsUnexpectedStatus_thenReturnsUnexpectedError(t *testing.T) {
+func TestEngineGenerateReviewed_whenChatReturnsUnexpectedStatus_thenReturnsUnexpectedError(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: unauthorized, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	_, err := engine.GenerateText(context.Background(), requirements)
+	_, err := engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	var unexpected *model.UnexpectedError
@@ -1196,17 +1237,176 @@ func TestEngineGenerateText_whenChatReturnsUnexpectedStatus_thenReturnsUnexpecte
 	}
 }
 
-func TestEngineGenerateText_whenChatReturnsUnexpectedStatus_thenSendsNoFurtherAttempt(t *testing.T) {
+func TestEngineGenerateReviewed_whenChatReturnsUnexpectedStatus_thenSendsNoFurtherAttempt(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{generate: unauthorized, review: noViolations}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
 
 	// Act
-	engine.GenerateText(context.Background(), requirements)
+	engine.GenerateReviewed(context.Background(), reviewed)
 
 	// Assert
 	if len(fake.generations) != 1 {
 		t.Fatalf("generations = %d; want the race aborted after the first", len(fake.generations))
+	}
+}
+
+func entryTagged(t *testing.T, path, generationID string) string {
+	t.Helper()
+	for _, e := range readHistory(t, path) {
+		if f := e.Fields(); f.GenerationID == generationID {
+			return f.Tag
+		}
+	}
+	t.Fatalf("history has no entry for %s", generationID)
+	return ""
+}
+
+func TestEngineGenerateReviewed_whenRecorded_thenGeneratorEntryTaggedGenerate(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
+	}
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	tag := entryTagged(t, path, "gen-1")
+
+	// Assert
+	if tag != testTag+"-generate" {
+		t.Fatalf("tag = %q, want %q", tag, testTag+"-generate")
+	}
+}
+
+func TestEngineGenerateReviewed_whenRecorded_thenReviewerEntryTaggedReview(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom(pickedModel), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.GenerateReviewed(context.Background(), reviewed); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
+	}
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	tag := entryTagged(t, path, "gen-review-1")
+
+	// Assert
+	if tag != testTag+"-review" {
+		t.Fatalf("tag = %q, want %q", tag, testTag+"-review")
+	}
+}
+
+var reviewRequest = model.ReviewRequest{
+	Task:     "Name a fruit.",
+	Content:  json.RawMessage(`{"fruit":"banana"}`),
+	Criteria: model.ReviewCriteria{Rules: "1. The fruit must be yellow.", ToleranceThreshold: 3},
+	Models:   freeTier,
+}
+
+func neverGenerates(t *testing.T) func(w http.ResponseWriter, r *http.Request, n int) {
+	return func(w http.ResponseWriter, r *http.Request, n int) {
+		t.Error("generation requested")
+		reply(w, "gen-unexpected", pickedModel, `{"fruit":"banana"}`)
+	}
+}
+
+func TestEngineReview_whenNoViolations_thenReturnsHighQuality(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: neverGenerates(t), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	got, err := engine.Review(context.Background(), reviewRequest)
+
+	// Assert
+	if err != nil || got.Quality != model.QualityHigh || got.GenerationID != "gen-review-1" {
+		t.Fatalf("got %+v, %v; want a high review gen-review-1", got, err)
+	}
+}
+
+func TestEngineReview_whenBadScoreAboveThreshold_thenReturnsLowQualityWithoutError(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: neverGenerates(t),
+		review: func(int) string {
+			return `{"violations":[{"rule":"1","evidence":"banana","explanation":"x","recommendedAction":"y","badScore":4}],"totalBadScore":4}`
+		},
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	got, err := engine.Review(context.Background(), reviewRequest)
+
+	// Assert
+	if err != nil || got.Quality != model.QualityLow {
+		t.Fatalf("got %+v, %v; want a low review and no error", got, err)
+	}
+}
+
+func TestEngineReview_whenReviewing_thenUserMessagesCarryTaskThenContent(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: neverGenerates(t), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	if _, err := engine.Review(context.Background(), reviewRequest); err != nil {
+		t.Fatalf("setup: Review failed: %v", err)
+	}
+
+	// Act
+	messages := fake.reviews[0].Messages
+
+	// Assert
+	if !strings.Contains(messages[1].Content, reviewRequest.Task) || !strings.Contains(messages[2].Content, string(reviewRequest.Content)) {
+		t.Fatalf("review messages %+v; want the task, then the content", messages)
+	}
+}
+
+func TestEngineReview_whenRecorded_thenReviewerEntryLinksNoGeneration(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: neverGenerates(t), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, path := newEngine(t, settings)
+	if _, err := engine.Review(context.Background(), reviewRequest); err != nil {
+		t.Fatalf("setup: Review failed: %v", err)
+	}
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	entries := readHistory(t, path)
+
+	// Assert
+	if len(entries) != 1 || entries[0].Fields().Role != history.RoleReviewer || entries[0].Fields().ReviewedGenerationID != "" {
+		t.Fatalf("history = %+v; want one reviewer entry linked to no generation", entries)
+	}
+}
+
+func TestEngineReview_whenContentNotJSON_thenReturnsUnexpectedError(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: neverGenerates(t), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	notJSON := reviewRequest
+	notJSON.Content = json.RawMessage(`banana`)
+
+	// Act
+	_, err := engine.Review(context.Background(), notJSON)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
 	}
 }

@@ -139,3 +139,16 @@ func TestCatalogCandidates_whenContextLengthMissing_thenErrors(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+func TestCatalogAllCandidates_whenListed_thenHoldsFreeAndPaidButNoRouterOrBatch(t *testing.T) {
+	// Arrange
+	c, _ := newCatalog(t)
+
+	// Act
+	models, err := c.AllCandidates()
+
+	// Assert
+	if got := candidateIDs(models); err != nil || !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b:free", "liquid/lfm-2.5-2.6b"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}

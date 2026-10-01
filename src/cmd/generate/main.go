@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/Darida/openrouterclient/src/api"
 	"github.com/Darida/openrouterclient/src/cmd/internal/requirementsfile"
-	"github.com/Darida/openrouterclient/src/model"
 )
 
 func main() {
@@ -37,16 +35,18 @@ func main() {
 		History: history,
 		Replies: api.LocalReplies(),
 		Logger:  logger,
+		Tag:     *tag,
+		Timeout: requirementsfile.Timeout,
 	})
 	if err != nil {
 		fail(err.Error())
 	}
 
-	requirements, err := requirementsfile.Read(*inputPath, *tag, requirementsfile.Tier(*paid))
+	request, err := requirementsfile.Read(*inputPath, requirementsfile.Tier(*paid))
 	if err != nil {
 		fail(err.Error())
 	}
-	result, err := client.GenerateText(context.Background(), requirements)
+	result, err := client.Generate(context.Background(), request)
 	if err == nil {
 		printJSON(os.Stdout, result)
 	}
@@ -58,18 +58,7 @@ func main() {
 		}
 	}
 	if err != nil {
-		var exhausted *model.AttemptsExhaustedError
-		if errors.As(err, &exhausted) {
-			for _, a := range exhausted.Attempts {
-				if a.Outcome == model.OutcomeBelowTarget {
-					logger.Info("generate: to reject this review and unrate its generation, run", "generation", a.GenerationID, "command", rateLowCommand(*rateScript, a.Review.GenerationID, "human rejected review"))
-				}
-			}
-		}
 		fail(err.Error())
-	}
-	if result.Review != nil {
-		logger.Info("generate: to reject this review and unrate its generation, run", "command", rateLowCommand(*rateScript, result.Review.GenerationID, "human rejected review"))
 	}
 	logger.Info("generate: to rate this run as low quality, run", "command", rateLowCommand(*rateScript, result.GenerationID, "human rejected output"))
 }
