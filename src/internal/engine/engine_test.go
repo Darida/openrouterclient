@@ -1434,3 +1434,100 @@ func TestEngineReview_whenContentNotJSON_thenReturnsUnexpectedError(t *testing.T
 		t.Fatalf("err = %v; want *model.UnexpectedError", err)
 	}
 }
+
+func TestEngineGenerate_whenSystemPromptSet_thenSendsItAsSystemMessage(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noViolations,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	req := unreviewed
+	req.SystemPrompt = "You are a greengrocer."
+
+	// Act
+	_, err := engine.Generate(context.Background(), req)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || strings.Join(roles(fake.generations[0]), ",") != "system,user" || fake.generations[0].Messages[0].Content != req.SystemPrompt {
+		t.Fatalf("err=%v generations=%+v; want the system prompt then the prompt", err, fake.generations)
+	}
+}
+
+func TestEngineGenerate_whenSystemPromptEmpty_thenSendsOnlyUserMessage(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, "gen-1", "writer/free", `{"fruit":"banana"}`)
+		},
+		review: noViolations,
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	_, err := engine.Generate(context.Background(), unreviewed)
+
+	// Assert
+	if err != nil || len(fake.generations) != 1 || strings.Join(roles(fake.generations[0]), ",") != "user" {
+		t.Fatalf("err=%v generations=%+v; want only the user prompt", err, fake.generations)
+	}
+}
+
+func correctedOnceWithSystemPrompt(t *testing.T, systemPrompt string) *fakeOpenRouter {
+	fake := &fakeOpenRouter{
+		generate: func(w http.ResponseWriter, r *http.Request, n int) {
+			reply(w, fmt.Sprintf("gen-%d", n), "writer/free", fmt.Sprintf(`{"fruit":"apple-%d"}`, n))
+		},
+		review: func(n int) string {
+			if n == 1 {
+				return `{"violations":[{"rule":"1","evidence":"apple","explanation":"Apples are not yellow.","recommendedAction":"Use a yellow fruit.","badScore":1}],"totalBadScore":1}`
+			}
+			return `{"violations":[],"totalBadScore":0}`
+		},
+	}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	req := reviewed
+	req.SystemPrompt = systemPrompt
+	if _, err := engine.GenerateReviewed(context.Background(), req); err != nil {
+		t.Fatalf("setup: GenerateReviewed failed: %v", err)
+	}
+	return fake
+}
+
+func TestEngineGenerateReviewed_whenSystemPromptSet_thenCorrectionKeepsIt(t *testing.T) {
+	// Arrange
+	fake := correctedOnceWithSystemPrompt(t, "You are a greengrocer.")
+
+	// Act
+	got := fake.generations[1]
+
+	// Assert
+	if strings.Join(roles(got), ",") != "system,user,assistant,user" || got.Messages[0].Content != "You are a greengrocer." {
+		t.Fatalf("correction messages = %+v; want the system prompt first", got.Messages)
+	}
+}
+
+func TestEngineGenerateReviewed_whenSystemPromptSet_thenReviewerNeverSeesIt(t *testing.T) {
+	// Arrange
+	fake := correctedOnceWithSystemPrompt(t, "You are a greengrocer.")
+
+	// Act
+	var leaks int
+	for _, req := range fake.reviews {
+		for _, m := range req.Messages {
+			if strings.Contains(m.Content, "greengrocer") {
+				leaks++
+			}
+		}
+	}
+
+	// Assert
+	if len(fake.reviews) != 2 || leaks != 0 {
+		t.Fatalf("%d reviews carry the system prompt %d times; want 2 reviews with none", len(fake.reviews), leaks)
+	}
+}

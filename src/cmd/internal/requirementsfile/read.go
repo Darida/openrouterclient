@@ -23,6 +23,7 @@ func Read(path string) (model.GenerateRequest, error) {
 		return model.GenerateRequest{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return model.GenerateRequest{
+		SystemPrompt:    input.SystemPrompt,
 		Prompt:          input.Prompt,
 		OutputSchema:    model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
 		Models:          model.ModelSelection{Denied: input.ExcludedModels},

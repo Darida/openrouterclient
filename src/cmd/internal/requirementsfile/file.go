@@ -7,6 +7,8 @@ import (
 )
 
 type requirementsFile struct {
+	// Optional; absent sends no system message.
+	SystemPrompt string `json:"systemPrompt"`
 	Prompt       string `json:"prompt"`
 	OutputSchema struct {
 		Name   string          `json:"name"`

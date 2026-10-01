@@ -12,7 +12,8 @@ steps 1 to 3. All three track outcomes as in step 4.
    `ModelSelection` (below), minus models whose context length can't hold
    the estimated prompt tokens (chars ÷ 4, schema included) plus
    `MaxOutputTokens`, minus models the history marks as unreliable (none when
-   disabled). It sends the prompt with a strict `json_schema` response
+   disabled). It sends the optional `SystemPrompt` as a system message, if
+   set, then the prompt, with a strict `json_schema` response
    format and `MaxOutputTokens` (default 10,000) as `max_tokens`. Output
    that fails the schema is a failed attempt. `Generate` returns the first
    schema-valid output and records it in history as high against its
@@ -39,8 +40,9 @@ steps 1 to 3. All three track outcomes as in step 4.
    violations' bad scores, or is 0 despite violations counts as reviewer
    output that fails the schema. `Review` returns the verdict whatever its
    quality.
+   The generation's `SystemPrompt` never reaches the reviewer.
 3. **Correct.** If that quality is below `TargetQuality`, a correction
-   request sends the original prompt, the previous reply, and the review's
+   request sends the system prompt (if any), the original prompt, the previous reply, and the review's
    violations, and asks the model to fix them. The correction is then
    reviewed again. Each correction sends only the latest reply and its
    violations. `MaxCorrections` caps the corrections: 0 reviews the first
@@ -170,8 +172,8 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.
 
 The script calls `Client.Generate` only; it never reviews. It takes one
 requirements file with the fields `prompt`, `outputSchema` (`name` and
-`schema`), `targetQuality`, and optionally `maxOutputTokens` and
-`excludedModels` (exact model IDs never asked). It picks from every
+`schema`), `targetQuality`, and optionally `systemPrompt`, `maxOutputTokens`,
+and `excludedModels` (exact model IDs never asked). It picks from every
 structured-output model, free and paid, minus `excludedModels`, narrowed to
 the cheapest like any selection. The script drops an empty `outputValidationRules` before reading the
 file; a non-empty one is an unknown field, since the script never reviews. See

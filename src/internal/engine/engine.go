@@ -104,7 +104,7 @@ func (e *Engine) CandidateModels(req model.GenerateRequest) ([]string, error) {
 	if err := validateGenerate(req); err != nil {
 		return nil, err
 	}
-	return e.candidateModels(req.Models, e.tag+generatorTagSuffix, promptTokens([]chat.Message{chat.UserMessage(req.Prompt)}, req.OutputSchema), maxOutputTokens(req.MaxOutputTokens))
+	return e.candidateModels(req.Models, e.tag+generatorTagSuffix, promptTokens(generationMessages(req.SystemPrompt, req.Prompt), req.OutputSchema), maxOutputTokens(req.MaxOutputTokens))
 }
 
 // Close blocks until every straggler from an already-won race is settled and
@@ -125,7 +125,7 @@ func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewe
 		return model.ReviewedText{}, nil, err
 	}
 	var failures []model.FailedAttempt
-	messages := []chat.Message{chat.UserMessage(req.Prompt)}
+	messages := generationMessages(req.SystemPrompt, req.Prompt)
 
 	maxRounds := 1 + req.MaxCorrections
 	for round := 1; round <= maxRounds; round++ {
@@ -152,7 +152,7 @@ func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewe
 			return model.ReviewedText{}, nil, err
 		}
 		failures = append(failures, rejection)
-		messages = []chat.Message{chat.UserMessage(req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Violations))}
+		messages = append(generationMessages(req.SystemPrompt, req.Prompt), chat.AssistantMessage(string(result.gen.content)), chat.UserMessage(review.CorrectionPrompt(result.verdict.Violations)))
 	}
 	return model.ReviewedText{}, &model.AttemptsExhaustedError{Attempts: failures}, nil
 }
@@ -167,7 +167,7 @@ func (e *Engine) generate(ctx context.Context, req model.GenerateRequest) (model
 	}
 	e.logger.Info("openrouter: generating without review")
 	label := e.generatorLabel(req.TargetQuality)
-	gen, failures, ok, err := e.hedge(ctx, race{label: label, models: req.Models, messages: []chat.Message{chat.UserMessage(req.Prompt)}, schema: req.OutputSchema, validate: validate, maxTokens: maxOutputTokens(req.MaxOutputTokens)})
+	gen, failures, ok, err := e.hedge(ctx, race{label: label, models: req.Models, messages: generationMessages(req.SystemPrompt, req.Prompt), schema: req.OutputSchema, validate: validate, maxTokens: maxOutputTokens(req.MaxOutputTokens)})
 	if err != nil {
 		return model.GeneratedText{}, nil, err
 	}
@@ -501,6 +501,15 @@ func (e *Engine) selectionPool(sel model.ModelSelection) ([]catalog.Model, error
 }
 
 // promptTokens counts the schema too, since providers fold it into the prompt.
+// generationMessages opens a generation conversation: the caller's system
+// prompt, if any, then the prompt.
+func generationMessages(systemPrompt, prompt string) []chat.Message {
+	if systemPrompt == "" {
+		return []chat.Message{chat.UserMessage(prompt)}
+	}
+	return []chat.Message{chat.SystemMessage(systemPrompt), chat.UserMessage(prompt)}
+}
+
 func promptTokens(messages []chat.Message, schema model.JSONSchema) int {
 	tokens := cost.EstimateTokens(string(schema.Schema))
 	for _, m := range messages {
