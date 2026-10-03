@@ -189,15 +189,19 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh
+bin/models.sh [bin/example-requirements.json]
 ```
 
-`bin/models.sh` takes no arguments. It runs the model-selection pipeline
+With no argument, `bin/models.sh` runs the model-selection pipeline
 for a fixed sample request (a one-line prompt with the default
 `MaxOutputTokens`) against each tier and prints the free
 candidates, then the cheapest paid pool, one per line under a `free:` and
-a `paid:` heading. It ignores history, so no model is excluded. It sends
-no chat request and needs no API key, since the model catalog is public.
+a `paid:` heading. Given a requirements file in the `bin/generate.sh`
+format, it instead runs one selection for that request, minus its
+`excludedModels`, and prints the pool `bin/generate.sh` would pick from,
+split under the same headings. Either way it ignores history, so no model
+is excluded by past failures. It sends no chat request and needs no API
+key, since the model catalog is public.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY
