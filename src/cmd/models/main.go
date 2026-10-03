@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Darida/openrouterclient/src/internal/engine"
@@ -31,19 +33,72 @@ var sampleRequest = model.GenerateRequest{
 }
 
 func main() {
+	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional; absent lists each tier)")
+	flag.Parse()
 	// Listing reads only the public model catalog, so no API key is sent.
 	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if *exclude == "" {
+		printTiers(e)
+		return
+	}
+	denied, err := parseExclude(*exclude)
+	if err != nil {
+		fail(err)
+	}
+	printDeniedPool(e, denied)
+}
+
+// printDeniedPool runs one selection over both tiers, as Generate does, since
+// the cheapest-pool cut over the whole set differs from one cut per tier.
+func printDeniedPool(e *engine.Engine, denied []string) {
+	request := sampleRequest
+	request.Models = model.ModelSelection{Denied: denied}
+	candidates, err := e.CandidateModels(request)
+	if err != nil {
+		fail(err)
+	}
+	var free, paid []string
+	for _, id := range candidates {
+		if strings.HasSuffix(id, ":free") {
+			free = append(free, id)
+		} else {
+			paid = append(paid, id)
+		}
+	}
+	printList(model.ModelTierFree, free)
+	printList(model.ModelTierPaid, paid)
+}
+
+func parseExclude(list string) ([]string, error) {
+	ids := strings.Split(list, ",")
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			return nil, fmt.Errorf("--exclude %q has an empty model ID", list)
+		}
+	}
+	return ids, nil
+}
+
+func printTiers(e *engine.Engine) {
 	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
 		request := sampleRequest
 		request.Models = model.ModelSelection{Tier: tier}
 		candidates, err := e.CandidateModels(request)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "models:", err)
-			os.Exit(1)
+			fail(err)
 		}
-		fmt.Printf("%s:\n", tier)
-		for _, id := range candidates {
-			fmt.Printf("  %s\n", id)
-		}
+		printList(tier, candidates)
 	}
+}
+
+func printList(tier model.ModelTier, ids []string) {
+	fmt.Printf("%s:\n", tier)
+	for _, id := range ids {
+		fmt.Printf("  %s\n", id)
+	}
+}
+
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, "models:", err)
+	os.Exit(1)
 }
