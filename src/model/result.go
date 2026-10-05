@@ -20,3 +20,13 @@ type ReviewedText struct {
 	// request's TargetQuality.
 	Review Review
 }
+
+// Estimate is the model a Generate attempt could ask and what it would cost.
+type Estimate struct {
+	Model string
+	// InputTokens × PromptUSDPerToken + OutputTokens × CompletionUSDPerToken,
+	// as if the reply used every output token. 0 for a free model.
+	CostUSD               float64
+	PromptUSDPerToken     float64
+	CompletionUSDPerToken float64
+}

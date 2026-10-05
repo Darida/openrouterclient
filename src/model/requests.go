@@ -80,3 +80,15 @@ type ReviewCriteria struct {
 	// above it rates low, and 0 rates high. At least 1.
 	ToleranceThreshold int
 }
+
+// EstimateRequest prices a generation from token counts alone, picking its
+// model as a first Generate attempt would without sending anything to it.
+type EstimateRequest struct {
+	Models ModelSelection
+	// The prompt's size, system prompt and output schema included. Must be
+	// positive.
+	InputTokens int
+	// The output tokens to price, as MaxOutputTokens would be. Must be
+	// positive.
+	OutputTokens int
+}

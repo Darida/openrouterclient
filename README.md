@@ -4,7 +4,8 @@ A Go library for OpenRouter text generation. You send a prompt and get
 back JSON that matches a schema you supply. It is ported from
 `assetloom/src/clients/openrouter` and supports text generation only.
 
-`Client` has three calls. `Generate` runs step 1 alone. `Review` runs
+`Client` has three generation calls, plus `Estimate`, which picks and
+prices a model without generating (see Model selection). `Generate` runs step 1 alone. `Review` runs
 step 2 alone, on content the caller supplies. `GenerateReviewed` runs
 steps 1 to 3. All three track outcomes as in step 4.
 
@@ -74,6 +75,15 @@ is priced as prompt chars ÷ 4 × prompt price plus `MaxOutputTokens` ×
 completion price, and only those at most 10% above the 30th-percentile
 estimate remain. Free models price at $0, so they always remain, and when at
 least 30% of the candidates are free, only free models remain.
+
+`Client.Estimate` runs this same selection without a prompt or a chat
+request. It takes an `EstimateRequest` with a `ModelSelection` and positive
+`InputTokens` and `OutputTokens`, which stand in for the prompt-chars ÷ 4
+estimate and `MaxOutputTokens`. It applies the context-length filter,
+history exclusions under the generation tag, and the cheapest-pool cut,
+then draws one model at random, as a first `Generate` attempt would. It
+returns that model with its per-token prices and its estimated cost. Each
+call draws again.
 
 An `Allowed` or `Denied` ID that isn't a structured-output model in the
 catalog is an error. The model list comes from OpenRouter's catalog, cached

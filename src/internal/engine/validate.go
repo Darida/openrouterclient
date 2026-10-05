@@ -108,3 +108,13 @@ func validateMaxOutputTokens(maxTokens int) error {
 	}
 	return nil
 }
+
+func validateEstimate(req model.EstimateRequest) error {
+	if err := validateSelection("Models", req.Models); err != nil {
+		return err
+	}
+	if req.InputTokens <= 0 || req.OutputTokens <= 0 {
+		return fmt.Errorf("engine: InputTokens and OutputTokens must be positive, got %d and %d", req.InputTokens, req.OutputTokens)
+	}
+	return nil
+}
