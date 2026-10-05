@@ -70,6 +70,19 @@ func TestChatBuildPayload_whenBuilt_thenDisallowsProviderFallbacks(t *testing.T)
 	}
 }
 
+func TestChatBuildPayload_whenBuilt_thenCapsProviderPrice(t *testing.T) {
+	// Arrange
+	schema := model.JSONSchema{Name: "s", Schema: json.RawMessage(`{"type":"object"}`)}
+
+	// Act
+	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "m:free", 100))
+
+	// Assert
+	if !strings.Contains(payload, `"max_price":{"completion":0.5,"prompt":0.1}`) {
+		t.Fatalf("payload does not cap provider price: %s", payload)
+	}
+}
+
 func TestChatParseResponse_whenBodyCarriesProviderError_thenReturnsProviderError(t *testing.T) {
 	// Arrange
 	body := []byte(`{"id":"gen-1","error":{"message":"Upstream error from Nvidia: Service temporarily overloaded","code":503,"metadata":{"error_type":"provider_overloaded"}}}`)

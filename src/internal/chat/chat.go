@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Darida/openrouterclient/src/internal/catalog"
 	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
@@ -51,7 +52,10 @@ func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, m
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": schema.Name, "strict": true, "schema": schema.Schema},
 		},
-		"provider": map[string]any{"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false},
+		"provider": map[string]any{
+			"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false,
+			"max_price": map[string]any{"prompt": catalog.MaxPromptUSDPerMillion, "completion": catalog.MaxCompletionUSDPerMillion},
+		},
 		"messages": messages,
 	}
 	body, err := json.Marshal(payload)

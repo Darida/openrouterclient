@@ -96,6 +96,45 @@ func TestCatalogCandidates_whenThirdPartyRouterListed_thenSkipsIt(t *testing.T) 
 	}
 }
 
+func TestCatalogCandidates_whenPromptPriceAboveCap_thenSkipsModel(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.00000011","completion":"0.0000002"}}]}`)
+
+	// Act
+	candidates, err := c.Candidates(model.ModelTierPaid)
+
+	// Assert
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("got %v, %v; want no candidates", candidates, err)
+	}
+}
+
+func TestCatalogCandidates_whenCompletionPriceAboveCap_thenSkipsModel(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.00000051"}}]}`)
+
+	// Act
+	candidates, err := c.Candidates(model.ModelTierPaid)
+
+	// Assert
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("got %v, %v; want no candidates", candidates, err)
+	}
+}
+
+func TestCatalogCandidates_whenPricesExactlyAtCaps_thenKeepsModel(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000005"}}]}`)
+
+	// Act
+	candidates, err := c.Candidates(model.ModelTierPaid)
+
+	// Assert
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("got %v, %v; want the model at the caps", candidates, err)
+	}
+}
+
 func TestCatalogCandidates_whenPriceNegativeButNotRouterPlaceholder_thenErrors(t *testing.T) {
 	// Arrange
 	c := newCatalogServing(t, `{"data":[{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"-0.5","completion":"0.0000002"}}]}`)

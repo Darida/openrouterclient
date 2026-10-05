@@ -70,6 +70,12 @@ model, free and paid.
 - `Allowed`: only these exact model IDs, free or paid.
 - `Denied`: every structured-output model, free and paid, except these.
 
+Every request caps price at $0.10 per 1M prompt tokens and $0.50 per 1M
+completion tokens, sent as OpenRouter's `provider.max_price`. A model listed
+above either cap is never a candidate, whatever the selection, so an
+`Allowed` or `Denied` ID priced above it is an error like any ID missing from
+the catalog.
+
 Whatever the selection, candidates are narrowed to the cheapest last: each
 is priced as prompt chars ÷ 4 × prompt price plus `MaxOutputTokens` ×
 completion price, and only those at most 10% above the 30th-percentile
