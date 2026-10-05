@@ -102,9 +102,9 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"data":[
 			{"id":"slow/model:free","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
-			{"id":"tiny/model","context_length":10000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000000001","completion":"0.0000000001"}},
-			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000000001","completion":"0.000000001"}},
-			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000001"}}
+			{"id":"tiny/model","context_length":10000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000001"}},
+			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}},
+			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"}}
 		]}`)
 	})
 	server := httptest.NewServer(mux)

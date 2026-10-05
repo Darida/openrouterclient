@@ -54,7 +54,7 @@ func TestEngineEstimate_whenPaidModelPicked_thenCostIsTokensTimesPrices(t *testi
 	fake := &fakeOpenRouter{}
 	_, settings := fake.serve(t)
 	engine, _ := newEngine(t, settings)
-	const want = 1_000*0.000000001 + 20_000*0.000000001
+	const want = 1_000*0.000001 + 20_000*0.000001
 
 	// Act
 	estimate, err := engine.Estimate(context.Background(), estimateRequest)

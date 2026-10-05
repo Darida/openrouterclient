@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Darida/openrouterclient/src/internal/catalog"
 	"github.com/Darida/openrouterclient/src/internal/replyfile"
 	"github.com/Darida/openrouterclient/src/model"
 )
 
 const latencyRankingHintSeconds = 30
+
+// USD per 1M tokens; OpenRouter refuses to route to an endpoint priced above.
+const (
+	maxPromptUSDPerMillion     = 0.1
+	maxCompletionUSDPerMillion = 0.5
+)
 
 type Message struct {
 	Role    string `json:"role"`
@@ -54,7 +59,7 @@ func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, m
 		},
 		"provider": map[string]any{
 			"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false,
-			"max_price": map[string]any{"prompt": catalog.MaxPromptUSDPerMillion, "completion": catalog.MaxCompletionUSDPerMillion},
+			"max_price": map[string]any{"prompt": maxPromptUSDPerMillion, "completion": maxCompletionUSDPerMillion},
 		},
 		"messages": messages,
 	}

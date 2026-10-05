@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"slices"
 	"strconv"
@@ -24,13 +23,6 @@ const (
 	routerPrice = "-1"
 )
 
-// Price caps in USD per 1M tokens. Requests carry them as OpenRouter's
-// provider.max_price, so a model listed above either is never a candidate.
-const (
-	MaxPromptUSDPerMillion     = 0.1
-	MaxCompletionUSDPerMillion = 0.5
-)
-
 // Catalog is OpenRouter's model list, fetched at most once per cacheTTL.
 type Catalog struct {
 	URL  string
@@ -45,7 +37,7 @@ type Catalog struct {
 }
 
 // Candidates lists tier's models that support strict json_schema output,
-// skipping routers and models priced above the caps. It errors on a candidate whose price is negative or
+// skipping routers. It errors on a candidate whose price is negative or
 // unparseable, or whose context length is missing.
 func (c *Catalog) Candidates(tier model.ModelTier) ([]Model, error) {
 	c.mu.Lock()
@@ -67,9 +59,6 @@ func (c *Catalog) Candidates(tier model.ModelTier) ([]Model, error) {
 		candidate, err := c.candidate(m)
 		if err != nil {
 			return nil, err
-		}
-		if !withinCaps(m) {
-			continue
 		}
 		candidates = append(candidates, candidate)
 	}
@@ -186,24 +175,6 @@ func isRouter(m entry) bool {
 // A ":batch" variant rejects the chat/completions endpoint with a 404.
 func isBatchOnly(id string) bool {
 	return strings.HasSuffix(id, ":batch")
-}
-
-// withinCaps compares exactly, since a price at the cap must stay a candidate
-// and float conversion of per-token decimals can land a hair above it.
-// It expects prices that candidate already validated.
-func withinCaps(m entry) bool {
-	return perMillion(m.Pricing.Prompt).Cmp(capRat(MaxPromptUSDPerMillion)) <= 0 &&
-		perMillion(m.Pricing.Completion).Cmp(capRat(MaxCompletionUSDPerMillion)) <= 0
-}
-
-func perMillion(usdPerToken string) *big.Rat {
-	r, _ := new(big.Rat).SetString(usdPerToken)
-	return r.Mul(r, big.NewRat(1_000_000, 1))
-}
-
-func capRat(usd float64) *big.Rat {
-	r, _ := new(big.Rat).SetString(strconv.FormatFloat(usd, 'f', -1, 64))
-	return r
 }
 
 func (c *Catalog) price(id, kind, raw string) (float64, error) {
