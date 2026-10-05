@@ -104,7 +104,22 @@ func (e *Engine) CandidateModels(req model.GenerateRequest) ([]string, error) {
 	if err := validateGenerate(req); err != nil {
 		return nil, err
 	}
-	return e.candidateModels(req.Models, e.tag+generatorTagSuffix, promptTokens(generationMessages(req.SystemPrompt, req.Prompt), req.OutputSchema), maxOutputTokens(req.MaxOutputTokens))
+	candidates, err := e.candidateModels(req.Models, e.tag+generatorTagSuffix, promptTokens(generationMessages(req.SystemPrompt, req.Prompt), req.OutputSchema), maxOutputTokens(req.MaxOutputTokens))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(candidates))
+	for i, m := range candidates {
+		ids[i] = m.ID
+	}
+	return ids, nil
+}
+
+// Estimate picks a model as a first Generate attempt with req's token counts
+// would, and prices it, without sending a chat request.
+func (e *Engine) Estimate(ctx context.Context, req model.EstimateRequest) (model.Estimate, error) {
+	estimate, err := e.estimate(req)
+	return estimate, publicError(ctx, nil, err)
 }
 
 // Close blocks until every straggler from an already-won race is settled and
@@ -114,6 +129,23 @@ func (e *Engine) Close() error {
 	e.backgroundMu.Lock()
 	defer e.backgroundMu.Unlock()
 	return e.backgroundErr
+}
+
+func (e *Engine) estimate(req model.EstimateRequest) (model.Estimate, error) {
+	if err := validateEstimate(req); err != nil {
+		return model.Estimate{}, err
+	}
+	candidates, err := e.candidateModels(req.Models, e.tag+generatorTagSuffix, req.InputTokens, req.OutputTokens)
+	if err != nil {
+		return model.Estimate{}, err
+	}
+	picked := pickModel(candidates)
+	return model.Estimate{
+		Model:                 picked.ID,
+		CostUSD:               cost.Estimate(picked, req.InputTokens, req.OutputTokens),
+		PromptUSDPerToken:     picked.PromptUSDPerToken,
+		CompletionUSDPerToken: picked.CompletionUSDPerToken,
+	}, nil
 }
 
 func (e *Engine) generateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, *model.AttemptsExhaustedError, error) {
@@ -306,7 +338,7 @@ func (e *Engine) hedge(ctx context.Context, r race) (attempt, []model.FailedAtte
 	}
 	timing := hedge.Timing{MaxAttempts: e.settings.MaxAttempts, Stagger: e.timeout, AttemptTimeout: e.timeout + e.settings.GraceAfterTimeout}
 	run := hedge.Run(ctx, timing, func(attemptCtx context.Context, num int) (attempt, hedge.Verdict) {
-		modelID := candidates[rand.IntN(len(candidates))]
+		modelID := pickModel(candidates).ID
 		payload, err := chat.BuildPayload(r.messages, r.schema, modelID, r.maxTokens)
 		if err != nil {
 			return fatal(modelID, "", err), hedge.Aborted
@@ -428,7 +460,7 @@ func entryFields(a attempt, label raceLabel, q model.Quality, reason string) his
 // candidateModels takes the selection's models, drops those whose context
 // can't hold the request, then those history excludes, then keeps only the
 // cheapest by estimated cost. It errors when nothing is left to ask.
-func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTokens, maxTokens int) ([]string, error) {
+func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTokens, maxTokens int) ([]catalog.Model, error) {
 	available, err := e.selectionPool(sel)
 	if err != nil {
 		return nil, err
@@ -464,12 +496,12 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 		return nil, err
 	}
 	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
-	models = pool
-	ids := make([]string, len(models))
-	for i, m := range models {
-		ids[i] = m.ID
-	}
-	return ids, nil
+	return pool, nil
+}
+
+// pickModel draws at random, spreading load across the cheapest pool.
+func pickModel(candidates []catalog.Model) catalog.Model {
+	return candidates[rand.IntN(len(candidates))]
 }
 
 // selectionPool expects a selection that passed validateSelection.
