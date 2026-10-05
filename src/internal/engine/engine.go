@@ -115,8 +115,6 @@ func (e *Engine) CandidateModels(req model.GenerateRequest) ([]string, error) {
 	return ids, nil
 }
 
-// Estimate picks a model as a first Generate attempt with req's token counts
-// would, and prices it, without sending a chat request.
 func (e *Engine) Estimate(ctx context.Context, req model.EstimateRequest) (model.Estimate, error) {
 	estimate, err := e.estimate(req)
 	return estimate, publicError(ctx, nil, err)

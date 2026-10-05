@@ -28,9 +28,9 @@ type Client interface {
 	// req.TargetQuality, and returns only output that does.
 	GenerateReviewed(ctx context.Context, req model.GenerateReviewedRequest) (model.ReviewedText, error)
 	// Estimate picks a model from req.Models as a first Generate attempt with
-	// req's token counts would, history exclusions included, and prices it,
-	// without sending it a chat request. It reads only OpenRouter's model
-	// catalog. Each call draws again at random from the cheapest models.
+	// req's token counts would, history exclusions included, and prices it.
+	// It reads only OpenRouter's model catalog. Each call draws again at
+	// random from the cheapest models.
 	Estimate(ctx context.Context, req model.EstimateRequest) (model.Estimate, error)
 	// Rate records a manual high/medium/low rating of a generation's or a
 	// review's GenerationID in history. Rating a review low also clears the
