@@ -14,8 +14,8 @@ const latencyRankingHintSeconds = 30
 
 // USD per 1M tokens; OpenRouter refuses to route to an endpoint priced above.
 const (
-	maxPromptUSDPerMillion     = 0.1
-	maxCompletionUSDPerMillion = 0.5
+	maxPromptUSDPerMillion     = 0.3
+	maxCompletionUSDPerMillion = 0.6
 )
 
 type Message struct {

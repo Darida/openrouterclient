@@ -78,7 +78,7 @@ func TestChatBuildPayload_whenBuilt_thenCapsProviderPrice(t *testing.T) {
 	payload := string(mustPayload(t, []Message{UserMessage("hi")}, schema, "m:free", 100))
 
 	// Assert
-	if !strings.Contains(payload, `"max_price":{"completion":0.5,"prompt":0.1}`) {
+	if !strings.Contains(payload, `"max_price":{"completion":0.6,"prompt":0.3}`) {
 		t.Fatalf("payload does not cap provider price: %s", payload)
 	}
 }
