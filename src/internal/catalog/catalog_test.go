@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -150,5 +151,59 @@ func TestCatalogAllCandidates_whenListed_thenHoldsFreeAndPaidButNoRouterOrBatch(
 	// Assert
 	if got := candidateIDs(models); err != nil || !slices.Equal(got, []string{"liquid/lfm-2.5-2.6b:free", "liquid/lfm-2.5-2.6b"}) {
 		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+const scoredModel = `{"id":"liquid/lfm-2.5-2.6b","context_length":32768,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000002"},"benchmarks":{"design_arena":[],"artificial_analysis":{"intelligence_index":%s,"coding_index":null,"agentic_index":null}}}`
+
+func TestCatalogCandidates_whenIntelligenceIndexListed_thenCarriesIt(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[`+fmt.Sprintf(scoredModel, "43.4")+`]}`)
+
+	// Act
+	models := mustCandidates(t, c, model.ModelTierPaid)
+
+	// Assert
+	if len(models) != 1 || models[0].IntelligenceIndex == nil || *models[0].IntelligenceIndex != 43.4 {
+		t.Fatalf("got %+v; want one model with intelligence index 43.4", models)
+	}
+}
+
+func TestCatalogCandidates_whenIntelligenceIndexNull_thenLeavesItNil(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[`+fmt.Sprintf(scoredModel, "null")+`]}`)
+
+	// Act
+	models := mustCandidates(t, c, model.ModelTierPaid)
+
+	// Assert
+	if len(models) != 1 || models[0].IntelligenceIndex != nil {
+		t.Fatalf("got %+v; want one model without intelligence index", models)
+	}
+}
+
+func TestCatalogCandidates_whenBenchmarksAbsent_thenLeavesIntelligenceIndexNil(t *testing.T) {
+	// Arrange
+	c, _ := newCatalog(t)
+
+	// Act
+	models := mustCandidates(t, c, model.ModelTierPaid)
+
+	// Assert
+	if len(models) != 1 || models[0].IntelligenceIndex != nil {
+		t.Fatalf("got %+v; want one model without intelligence index", models)
+	}
+}
+
+func TestCatalogCandidates_whenIntelligenceIndexAbove100_thenErrors(t *testing.T) {
+	// Arrange
+	c := newCatalogServing(t, `{"data":[`+fmt.Sprintf(scoredModel, "100.5")+`]}`)
+
+	// Act
+	_, err := c.Candidates(model.ModelTierPaid)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
 	}
 }

@@ -72,6 +72,9 @@ func validateSelection(field string, sel model.ModelSelection) error {
 	if set > 1 {
 		return fmt.Errorf("engine: %s must set at most one of Tier, Allowed, and Denied, got %+v", field, sel)
 	}
+	if !(sel.MinIntelligenceIndex >= 0 && sel.MinIntelligenceIndex <= 100) {
+		return fmt.Errorf("engine: %s.MinIntelligenceIndex must be within 0–100, got %v", field, sel.MinIntelligenceIndex)
+	}
 	if sel.Tier != "" && sel.Tier != model.ModelTierFree && sel.Tier != model.ModelTierPaid {
 		return fmt.Errorf("engine: %s.Tier must be free or paid, got %q", field, sel.Tier)
 	}

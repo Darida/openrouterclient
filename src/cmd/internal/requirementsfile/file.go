@@ -19,4 +19,6 @@ type requirementsFile struct {
 	MaxOutputTokens int `json:"maxOutputTokens"`
 	// Optional; exact model IDs never asked. Absent means none.
 	ExcludedModels []string `json:"excludedModels"`
+	// Optional; 0 or absent means no minimum.
+	MinIntelligenceIndex float64 `json:"minIntelligenceIndex"`
 }

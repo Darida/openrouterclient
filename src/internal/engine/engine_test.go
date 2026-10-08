@@ -101,10 +101,10 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"data":[
-			{"id":"slow/model:free","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}},
-			{"id":"tiny/model","context_length":10000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000001"}},
-			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"}},
-			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"}}
+			{"id":"slow/model:free","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"},"benchmarks":{"artificial_analysis":{"intelligence_index":20}}},
+			{"id":"tiny/model","context_length":10000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.0000001","completion":"0.0000001"},"benchmarks":{"artificial_analysis":{"intelligence_index":90}}},
+			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"},"benchmarks":{"artificial_analysis":{"intelligence_index":50}}},
+			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"},"benchmarks":{"artificial_analysis":{"intelligence_index":null}}}
 		]}`)
 	})
 	server := httptest.NewServer(mux)
@@ -864,6 +864,114 @@ func TestEngineValidateSelection_whenTierAndDeniedBothSet_thenErrors(t *testing.
 
 	// Act
 	err := validateSelection("Models", both)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestEngineCandidateModels_whenMinIntelligenceIndexSet_thenDropsModelsBelowIt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	smart := unreviewed
+	smart.Models = model.ModelSelection{MinIntelligenceIndex: 30}
+
+	// Act
+	candidates, err := engine.CandidateModels(smart)
+
+	// Assert
+	if err != nil || !reflect.DeepEqual(candidates, []string{"cheap/model"}) {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
+	}
+}
+
+func TestEngineCandidateModels_whenMinIntelligenceIndexEqualsModelIndex_thenKeepsIt(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	smart := unreviewed
+	smart.Models = model.ModelSelection{Allowed: []string{"cheap/model"}, MinIntelligenceIndex: 50}
+
+	// Act
+	candidates, err := engine.CandidateModels(smart)
+
+	// Assert
+	if err != nil || !reflect.DeepEqual(candidates, []string{"cheap/model"}) {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
+	}
+}
+
+func TestEngineCandidateModels_whenMinIntelligenceIndexWithDenied_thenAppliesBoth(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	smart := unreviewed
+	smart.Models = model.ModelSelection{Denied: []string{"cheap/model"}, MinIntelligenceIndex: 10}
+
+	// Act
+	candidates, err := engine.CandidateModels(smart)
+
+	// Assert
+	if err != nil || !reflect.DeepEqual(candidates, []string{pickedModel}) {
+		t.Fatalf("candidates=%v, %v; want [%s]", candidates, err, pickedModel)
+	}
+}
+
+func TestEngineGenerate_whenMinIntelligenceIndexSetAndAllowedModelHasNoIndex_thenReturnsUnexpectedError(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{generate: bananaFrom("pricey/model"), review: noViolations}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	unscored := unreviewed
+	unscored.Models = model.ModelSelection{Allowed: []string{"pricey/model"}, MinIntelligenceIndex: 1}
+
+	// Act
+	_, err := engine.Generate(context.Background(), unscored)
+
+	// Assert
+	var unexpected *model.UnexpectedError
+	if !errors.As(err, &unexpected) {
+		t.Fatalf("err = %v; want *model.UnexpectedError", err)
+	}
+}
+
+func TestEngineValidateSelection_whenTierAndMinIntelligenceIndexBothSet_thenAccepts(t *testing.T) {
+	// Arrange
+	both := model.ModelSelection{Tier: model.ModelTierPaid, MinIntelligenceIndex: 40}
+
+	// Act
+	err := validateSelection("Models", both)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+}
+
+func TestEngineValidateSelection_whenMinIntelligenceIndexNegative_thenErrors(t *testing.T) {
+	// Arrange
+	negative := model.ModelSelection{MinIntelligenceIndex: -1}
+
+	// Act
+	err := validateSelection("Models", negative)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestEngineValidateSelection_whenMinIntelligenceIndexAbove100_thenErrors(t *testing.T) {
+	// Arrange
+	tooHigh := model.ModelSelection{MinIntelligenceIndex: 101}
+
+	// Act
+	err := validateSelection("Models", tooHigh)
 
 	// Assert
 	if err == nil {

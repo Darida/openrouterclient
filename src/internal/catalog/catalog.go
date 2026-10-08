@@ -38,7 +38,8 @@ type Catalog struct {
 
 // Candidates lists tier's models that support strict json_schema output,
 // skipping routers. It errors on a candidate whose price is negative or
-// unparseable, or whose context length is missing.
+// unparseable, whose context length is missing, or whose intelligence index
+// is outside 0–100.
 func (c *Catalog) Candidates(tier model.ModelTier) ([]Model, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -90,7 +91,11 @@ func (c *Catalog) candidate(m entry) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	return Model{ID: m.ID, ContextTokens: m.ContextLength, PromptUSDPerToken: prompt, CompletionUSDPerToken: completion}, nil
+	index, err := c.intelligenceIndex(m)
+	if err != nil {
+		return Model{}, err
+	}
+	return Model{ID: m.ID, ContextTokens: m.ContextLength, PromptUSDPerToken: prompt, CompletionUSDPerToken: completion, IntelligenceIndex: index}, nil
 }
 
 func (c *Catalog) refresh() error {
@@ -183,4 +188,15 @@ func (c *Catalog) price(id, kind, raw string) (float64, error) {
 		return 0, c.unexpected(fmt.Sprintf("model %q has an invalid %s price %q", id, kind, raw))
 	}
 	return usd, nil
+}
+
+func (c *Catalog) intelligenceIndex(m entry) (*float64, error) {
+	if m.Benchmarks == nil || m.Benchmarks.ArtificialAnalysis == nil || m.Benchmarks.ArtificialAnalysis.IntelligenceIndex == nil {
+		return nil, nil
+	}
+	index := *m.Benchmarks.ArtificialAnalysis.IntelligenceIndex
+	if index < 0 || index > 100 {
+		return nil, c.unexpected(fmt.Sprintf("model %q has an intelligence index %v outside 0–100", m.ID, index))
+	}
+	return &index, nil
 }

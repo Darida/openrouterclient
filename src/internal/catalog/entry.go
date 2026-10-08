@@ -13,6 +13,11 @@ type entry struct {
 		Prompt     string `json:"prompt"`
 		Completion string `json:"completion"`
 	} `json:"pricing"`
+	Benchmarks *struct {
+		ArtificialAnalysis *struct {
+			IntelligenceIndex *float64 `json:"intelligence_index"`
+		} `json:"artificial_analysis"`
+	} `json:"benchmarks"`
 }
 
 // Model is a candidate a request may be sent to.
@@ -22,4 +27,6 @@ type Model struct {
 	ContextTokens         int
 	PromptUSDPerToken     float64
 	CompletionUSDPerToken float64
+	// Artificial Analysis's 0–100 score; nil when the catalog lists none.
+	IntelligenceIndex *float64
 }
