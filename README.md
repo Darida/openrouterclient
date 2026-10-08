@@ -77,8 +77,9 @@ value. A model the catalog lists without an index is dropped, even one named
 in `Allowed`. A value outside 0–100 is an error, and so is a catalog index
 outside 0–100.
 
-Every chat request caps price at $0.10 per 1M prompt tokens and $0.50 per
-1M completion tokens, sent as OpenRouter's `provider.max_price`. Selection
+Every chat request caps price at $6 per 1M prompt tokens and $21 per 1M
+completion tokens, sent as OpenRouter's `provider.max_price`. These cap each
+token's price rate, not a request's total cost. Selection
 ignores the cap, so a model priced above it can still be picked; OpenRouter
 then refuses that attempt (see Refusals).
 
