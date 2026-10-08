@@ -75,6 +75,9 @@ func validateSelection(field string, sel model.ModelSelection) error {
 	if !(sel.MinIntelligenceIndex >= 0 && sel.MinIntelligenceIndex <= 100) {
 		return fmt.Errorf("engine: %s.MinIntelligenceIndex must be within 0–100, got %v", field, sel.MinIntelligenceIndex)
 	}
+	if !(sel.CostPercentile >= 0 && sel.CostPercentile <= 100) {
+		return fmt.Errorf("engine: %s.CostPercentile must be within 0–100, got %v", field, sel.CostPercentile)
+	}
 	if sel.Tier != "" && sel.Tier != model.ModelTierFree && sel.Tier != model.ModelTierPaid {
 		return fmt.Errorf("engine: %s.Tier must be free or paid, got %q", field, sel.Tier)
 	}

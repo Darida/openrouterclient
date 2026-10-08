@@ -84,9 +84,10 @@ then refuses that attempt (see Refusals).
 
 Whatever the selection, candidates are narrowed to the cheapest last: each
 is priced as prompt chars ÷ 4 × prompt price plus `MaxOutputTokens` ×
-completion price, and only those at most 10% above the 30th-percentile
-estimate remain. Free models price at $0, so they always remain, and when at
-least 30% of the candidates are free, only free models remain.
+completion price, and only those at most 10% above the `CostPercentile`-th
+percentile estimate remain. `CostPercentile` is 0–100, and 0 means 10. Free
+models price at $0, so they always remain, and when at least
+`CostPercentile` percent of the candidates are free, only free models remain.
 
 `Client.Estimate` runs this same selection without a prompt or a chat
 request. It takes an `EstimateRequest` with a `ModelSelection` and positive
@@ -196,8 +197,9 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.
 The script calls `Client.Generate` only; it never reviews. It takes one
 requirements file with the fields `prompt`, `outputSchema` (`name` and
 `schema`), `targetQuality`, and optionally `systemPrompt`, `maxOutputTokens`,
-`excludedModels` (exact model IDs never asked), and `minIntelligenceIndex`
-(`MinIntelligenceIndex`, 0 or absent for no minimum). It picks from every
+`excludedModels` (exact model IDs never asked), `minIntelligenceIndex`
+(`MinIntelligenceIndex`, 0 or absent for no minimum), and `costPercentile`
+(`CostPercentile`, 0 or absent for the 10th percentile). It picks from every
 structured-output model, free and paid, minus `excludedModels` and those
 below `minIntelligenceIndex`, narrowed to the cheapest like any selection. The script drops an empty `outputValidationRules` before reading the
 file; a non-empty one is an unknown field, since the script never reviews. See
@@ -213,7 +215,7 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N]
+bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N] [--cost-percentile=N]
 ```
 
 With no argument, `bin/models.sh` runs the model-selection pipeline
@@ -224,20 +226,21 @@ a `paid:` heading. With `--exclude`, a comma-separated list of exact model
 IDs, it instead runs one selection over every structured-output model
 minus those IDs, as `bin/generate.sh` does with `excludedModels`, and
 prints that pool split under the same headings. `--min-intelligence-index`
-sets `MinIntelligenceIndex` on either form. An empty entry, or an ID
+sets `MinIntelligenceIndex` and `--cost-percentile` sets `CostPercentile` on
+either form. An empty entry, or an ID
 that isn't a structured-output model in the catalog, is an error. Either
 way it ignores history, so no model is excluded by past failures. It sends
 no chat request and needs no API
 key, since the model catalog is public.
 
 ```sh
-bin/estimate.sh --input-tokens=N --output-tokens=N [--exclude=MODEL_ID,...] [--min-intelligence-index=N]
+bin/estimate.sh --input-tokens=N --output-tokens=N [--exclude=MODEL_ID,...] [--min-intelligence-index=N] [--cost-percentile=N]
 ```
 
 `bin/estimate.sh` calls `Client.Estimate` and prints the picked model, its
 per-token prices, and its estimated cost as JSON on stdout. Both token
-counts are required and must be positive. `--exclude` and
-`--min-intelligence-index` set the selection as in `bin/models.sh`; with
+counts are required and must be positive. `--exclude`,
+`--min-intelligence-index`, and `--cost-percentile` set the selection as in `bin/models.sh`; with
 neither, it picks from every structured-output model. Like
 `bin/models.sh`, it ignores history, sends no chat request, and needs no
 API key. Each run draws again.

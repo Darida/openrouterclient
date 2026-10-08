@@ -489,11 +489,15 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 	if len(models) == 0 {
 		return nil, fmt.Errorf("engine: history excludes every structured-output model of selection %+v with enough context: %v", sel, excluded)
 	}
-	pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens)
+	percentileRank := sel.CostPercentile
+	if percentileRank == 0 {
+		percentileRank = cost.DefaultPoolPercentile
+	}
+	pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens, percentileRank)
 	if err != nil {
 		return nil, err
 	}
-	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
+	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "percentile", percentileRank, "maxEstimateUSD", ceilingUSD)
 	return pool, nil
 }
 

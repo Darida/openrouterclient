@@ -36,18 +36,19 @@ var sampleRequest = model.GenerateRequest{
 func main() {
 	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional; absent lists each tier)")
 	minIndex := flag.Float64("min-intelligence-index", 0, "lowest Artificial Analysis intelligence index asked (optional; 0 means no minimum)")
+	costPercentile := flag.Float64("cost-percentile", 0, "cost percentile setting the cheapest pool's ceiling (optional; 0 means the 10th)")
 	flag.Parse()
 	// Listing reads only the public model catalog, so no API key is sent.
 	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if *exclude == "" {
-		printTiers(e, *minIndex)
+		printTiers(e, *minIndex, *costPercentile)
 		return
 	}
 	denied, err := selectionflag.ParseExclude(*exclude)
 	if err != nil {
 		fail(err)
 	}
-	printDeniedPool(e, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex})
+	printDeniedPool(e, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile})
 }
 
 // printDeniedPool runs one selection over both tiers, as Generate does, since
@@ -71,10 +72,10 @@ func printDeniedPool(e *engine.Engine, sel model.ModelSelection) {
 	printList(model.ModelTierPaid, paid)
 }
 
-func printTiers(e *engine.Engine, minIndex float64) {
+func printTiers(e *engine.Engine, minIndex, costPercentile float64) {
 	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
 		request := sampleRequest
-		request.Models = model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex}
+		request.Models = model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex, CostPercentile: costPercentile}
 		candidates, err := e.CandidateModels(request)
 		if err != nil {
 			fail(err)

@@ -17,4 +17,9 @@ type ModelSelection struct {
 	// OpenRouter's catalog, is at least this; a model listed without one is
 	// never asked. 0 means no minimum; it must be within 0–100.
 	MinIntelligenceIndex float64
+	// Which percentile of the candidates' estimated costs sets the price
+	// ceiling: only candidates estimated at most 10% above it are asked. So
+	// when at least this percent of the candidates are free, only free ones
+	// are asked. 0 means the 10th percentile; it must be within 0–100.
+	CostPercentile float64
 }
