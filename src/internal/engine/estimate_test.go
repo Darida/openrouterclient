@@ -183,3 +183,20 @@ func TestEngineEstimateCandidateModels_whenInputTokensZero_thenErrors(t *testing
 		t.Fatal("expected an error")
 	}
 }
+
+func TestEngineEstimateCandidateModels_whenSelectionMatchesNothing_thenErrorIsErrNoCandidates(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	unscored := estimateRequest
+	unscored.Models = model.ModelSelection{Allowed: []string{"pricey/model"}, MinIntelligenceIndex: 100}
+
+	// Act
+	_, err := engine.EstimateCandidateModels(unscored)
+
+	// Assert
+	if !errors.Is(err, ErrNoCandidates) {
+		t.Fatalf("err = %v, want ErrNoCandidates", err)
+	}
+}

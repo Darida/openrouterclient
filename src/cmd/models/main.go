@@ -46,13 +46,21 @@ func main() {
 	}
 	// Listing reads only the public model catalog, so no API key is sent.
 	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	// A selection nothing matches is an answer here, not a failure: it lists empty.
 	list := func(sel model.ModelSelection) ([]string, error) {
+		var candidates []string
+		var err error
 		if *inputTokens == 0 {
 			request := sampleRequest
 			request.Models = sel
-			return e.CandidateModels(request)
+			candidates, err = e.CandidateModels(request)
+		} else {
+			candidates, err = e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
 		}
-		return e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
+		if errors.Is(err, engine.ErrNoCandidates) {
+			return nil, nil
+		}
+		return candidates, err
 	}
 	if *exclude == "" {
 		printTiers(list, *minIndex, *costPercentile)
