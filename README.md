@@ -62,13 +62,20 @@ steps 1 to 3. All three track outcomes as in step 4.
 
 ## Model selection
 
-A `ModelSelection` sets at most one of its fields; setting more than one is
-an error. Setting none, like an empty `Denied`, means every structured-output
-model, free and paid.
+A `ModelSelection` sets at most one of `Tier`, `Allowed`, and `Denied`;
+setting more than one is an error. Setting none, like an empty `Denied`,
+means every structured-output model, free and paid.
 
 - `Tier`: the free (`:free`) or paid structured-output models.
 - `Allowed`: only these exact model IDs, free or paid.
 - `Denied`: every structured-output model, free and paid, except these.
+
+`MinIntelligenceIndex` combines with any of these. When it isn't 0, it keeps
+only models whose Artificial Analysis intelligence index in the catalog
+(`benchmarks.artificial_analysis.intelligence_index`) is at least that
+value. A model the catalog lists without an index is dropped, even one named
+in `Allowed`. A value outside 0–100 is an error, and so is a catalog index
+outside 0–100.
 
 Every chat request caps price at $0.10 per 1M prompt tokens and $0.50 per
 1M completion tokens, sent as OpenRouter's `provider.max_price`. Selection
@@ -188,9 +195,10 @@ bin/generate.sh --key=YOUR_OPENROUTER_KEY --tag=bakery bin/example-requirements.
 The script calls `Client.Generate` only; it never reviews. It takes one
 requirements file with the fields `prompt`, `outputSchema` (`name` and
 `schema`), `targetQuality`, and optionally `systemPrompt`, `maxOutputTokens`,
-and `excludedModels` (exact model IDs never asked). It picks from every
-structured-output model, free and paid, minus `excludedModels`, narrowed to
-the cheapest like any selection. The script drops an empty `outputValidationRules` before reading the
+`excludedModels` (exact model IDs never asked), and `minIntelligenceIndex`
+(`MinIntelligenceIndex`, 0 or absent for no minimum). It picks from every
+structured-output model, free and paid, minus `excludedModels` and those
+below `minIntelligenceIndex`, narrowed to the cheapest like any selection. The script drops an empty `outputValidationRules` before reading the
 file; a non-empty one is an unknown field, since the script never reviews. See
 `bin/example-requirements.json`. The OpenRouter API key is required as
 `--key=...`, and the client's history tag as `--tag=...`. `Config.Timeout`
@@ -204,7 +212,7 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...]
+bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N]
 ```
 
 With no argument, `bin/models.sh` runs the model-selection pipeline
@@ -214,7 +222,8 @@ candidates, then the cheapest paid pool, one per line under a `free:` and
 a `paid:` heading. With `--exclude`, a comma-separated list of exact model
 IDs, it instead runs one selection over every structured-output model
 minus those IDs, as `bin/generate.sh` does with `excludedModels`, and
-prints that pool split under the same headings. An empty entry, or an ID
+prints that pool split under the same headings. `--min-intelligence-index`
+sets `MinIntelligenceIndex` on either form. An empty entry, or an ID
 that isn't a structured-output model in the catalog, is an error. Either
 way it ignores history, so no model is excluded by past failures. It sends
 no chat request and needs no API
@@ -260,10 +269,11 @@ This library never falls back and never swallows a failure.
   includes a 200 body that isn't JSON, a non-200 body that isn't an
   OpenRouter error object, a 200 response with no `X-Generation-Id`, a
   model list that can't be fetched, lists a candidate without a context
-  length or with an invalid price, or leaves no candidate after the
+  length, with an invalid price, or with an intelligence index outside 0–100, or leaves no candidate after the
   context-length filter and exclusions, an `Allowed` or `Denied` ID that
   isn't a structured-output model in the catalog, an invalid request
-  (including a `ModelSelection` that sets more than one field, an
+  (including a `ModelSelection` that sets more than one of `Tier`,
+  `Allowed`, and `Denied` or a `MinIntelligenceIndex` outside 0–100, an
   invalid `OutputSchema`, `TargetQuality`, or `ReviewCriteria`, and
   `ReviewRequest.Content` that isn't JSON), and an unreadable or malformed
   history file. A failure while recording a won

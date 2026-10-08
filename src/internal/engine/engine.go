@@ -464,7 +464,7 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 		return nil, err
 	}
 	if len(available) == 0 {
-		return nil, fmt.Errorf("engine: OpenRouter's catalog lists no structured-output models for selection %+v", sel)
+		return nil, fmt.Errorf("engine: no structured-output model in OpenRouter's catalog matches selection %+v", sel)
 	}
 	requestTokens := promptTokens + maxTokens
 	var fitting []catalog.Model
@@ -504,6 +504,17 @@ func pickModel(candidates []catalog.Model) catalog.Model {
 
 // selectionPool expects a selection that passed validateSelection.
 func (e *Engine) selectionPool(sel model.ModelSelection) ([]catalog.Model, error) {
+	pool, err := e.listedPool(sel)
+	if err != nil || sel.MinIntelligenceIndex == 0 {
+		return pool, err
+	}
+	return slices.DeleteFunc(pool, func(m catalog.Model) bool {
+		return m.IntelligenceIndex == nil || *m.IntelligenceIndex < sel.MinIntelligenceIndex
+	}), nil
+}
+
+// listedPool applies the selection's Tier, Allowed, or Denied.
+func (e *Engine) listedPool(sel model.ModelSelection) ([]catalog.Model, error) {
 	if sel.Tier != "" {
 		return e.catalog.Candidates(sel.Tier)
 	}
