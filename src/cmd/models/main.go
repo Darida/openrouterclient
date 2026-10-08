@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -37,26 +38,40 @@ func main() {
 	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional; absent lists each tier)")
 	minIndex := flag.Float64("min-intelligence-index", 0, "lowest Artificial Analysis intelligence index asked (optional; 0 means no minimum)")
 	costPercentile := flag.Float64("cost-percentile", 0, "cost percentile setting the cheapest pool's ceiling (optional; 0 means the 10th)")
+	inputTokens := flag.Int("input-tokens", 0, "prompt tokens to price instead of the sample request (optional; requires --output-tokens)")
+	outputTokens := flag.Int("output-tokens", 0, "output tokens to price instead of the sample request (optional; requires --input-tokens)")
 	flag.Parse()
+	if (*inputTokens == 0) != (*outputTokens == 0) {
+		fail(errors.New("--input-tokens and --output-tokens must be given together"))
+	}
 	// Listing reads only the public model catalog, so no API key is sent.
 	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	list := func(sel model.ModelSelection) ([]string, error) {
+		if *inputTokens == 0 {
+			request := sampleRequest
+			request.Models = sel
+			return e.CandidateModels(request)
+		}
+		return e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
+	}
 	if *exclude == "" {
-		printTiers(e, *minIndex, *costPercentile)
+		printTiers(list, *minIndex, *costPercentile)
 		return
 	}
 	denied, err := selectionflag.ParseExclude(*exclude)
 	if err != nil {
 		fail(err)
 	}
-	printDeniedPool(e, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile})
+	printDeniedPool(list, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile})
 }
+
+// candidateLister lists the models a selection would pick from.
+type candidateLister func(model.ModelSelection) ([]string, error)
 
 // printDeniedPool runs one selection over both tiers, as Generate does, since
 // the cheapest-pool cut over the whole set differs from one cut per tier.
-func printDeniedPool(e *engine.Engine, sel model.ModelSelection) {
-	request := sampleRequest
-	request.Models = sel
-	candidates, err := e.CandidateModels(request)
+func printDeniedPool(list candidateLister, sel model.ModelSelection) {
+	candidates, err := list(sel)
 	if err != nil {
 		fail(err)
 	}
@@ -72,11 +87,9 @@ func printDeniedPool(e *engine.Engine, sel model.ModelSelection) {
 	printList(model.ModelTierPaid, paid)
 }
 
-func printTiers(e *engine.Engine, minIndex, costPercentile float64) {
+func printTiers(list candidateLister, minIndex, costPercentile float64) {
 	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
-		request := sampleRequest
-		request.Models = model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex, CostPercentile: costPercentile}
-		candidates, err := e.CandidateModels(request)
+		candidates, err := list(model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex, CostPercentile: costPercentile})
 		if err != nil {
 			fail(err)
 		}

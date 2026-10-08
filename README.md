@@ -215,7 +215,7 @@ result low with the reason "human rejected output". If every attempt
 fails, it prints the failed attempts on stderr and exits 1.
 
 ```sh
-bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N] [--cost-percentile=N]
+bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N] [--cost-percentile=N] [--input-tokens=N --output-tokens=N]
 ```
 
 With no argument, `bin/models.sh` runs the model-selection pipeline
@@ -227,7 +227,9 @@ IDs, it instead runs one selection over every structured-output model
 minus those IDs, as `bin/generate.sh` does with `excludedModels`, and
 prints that pool split under the same headings. `--min-intelligence-index`
 sets `MinIntelligenceIndex` and `--cost-percentile` sets `CostPercentile` on
-either form. An empty entry, or an ID
+either form. `--input-tokens` and `--output-tokens`, given together, replace the
+sample request's size with those token counts, as `bin/estimate.sh` prices
+them. An empty entry, or an ID
 that isn't a structured-output model in the catalog, is an error. Either
 way it ignores history, so no model is excluded by past failures. It sends
 no chat request and needs no API
