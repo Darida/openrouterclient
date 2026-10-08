@@ -21,4 +21,6 @@ type requirementsFile struct {
 	ExcludedModels []string `json:"excludedModels"`
 	// Optional; 0 or absent means no minimum.
 	MinIntelligenceIndex float64 `json:"minIntelligenceIndex"`
+	// Optional; 0 or absent means the 10th percentile.
+	CostPercentile float64 `json:"costPercentile"`
 }

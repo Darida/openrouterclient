@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Darida/openrouterclient/src/cmd/internal/selectionflag"
@@ -34,59 +34,39 @@ var sampleRequest = model.GenerateRequest{
 }
 
 func main() {
-	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional; absent lists each tier)")
+	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional)")
 	minIndex := flag.Float64("min-intelligence-index", 0, "lowest Artificial Analysis intelligence index asked (optional; 0 means no minimum)")
+	costPercentile := flag.Float64("cost-percentile", 0, "cost percentile setting the cheapest pool's ceiling (optional; 0 means the 10th)")
+	inputTokens := flag.Int("input-tokens", 0, "prompt tokens to price instead of the sample request (optional; requires --output-tokens)")
+	outputTokens := flag.Int("output-tokens", 0, "output tokens to price instead of the sample request (optional; requires --input-tokens)")
 	flag.Parse()
-	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if *exclude == "" {
-		printTiers(e, *minIndex)
-		return
+	if (*inputTokens == 0) != (*outputTokens == 0) {
+		fail(errors.New("--input-tokens and --output-tokens must be given together"))
 	}
-	denied, err := selectionflag.ParseExclude(*exclude)
-	if err != nil {
-		fail(err)
-	}
-	printDeniedPool(e, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex})
-}
-
-// printDeniedPool runs one selection over both tiers, as Generate does, since
-// the cheapest-pool cut over the whole set differs from one cut per tier.
-func printDeniedPool(e *engine.Engine, sel model.ModelSelection) {
-	request := sampleRequest
-	request.Models = sel
-	candidates, err := e.CandidateModels(request)
-	if err != nil {
-		fail(err)
-	}
-	var free, paid []string
-	for _, id := range candidates {
-		if strings.HasSuffix(id, ":free") {
-			free = append(free, id)
-		} else {
-			paid = append(paid, id)
-		}
-	}
-	printList(model.ModelTierFree, free)
-	printList(model.ModelTierPaid, paid)
-}
-
-func printTiers(e *engine.Engine, minIndex float64) {
-	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
-		request := sampleRequest
-		request.Models = model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex}
-		candidates, err := e.CandidateModels(request)
-		if err != nil {
+	var denied []string
+	if *exclude != "" {
+		var err error
+		if denied, err = selectionflag.ParseExclude(*exclude); err != nil {
 			fail(err)
 		}
-		printList(tier, candidates)
 	}
-}
-
-func printList(tier model.ModelTier, ids []string) {
-	fmt.Printf("%s:\n", tier)
-	for _, id := range ids {
-		fmt.Printf("  %s\n", id)
+	sel := model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile}
+	// Listing reads only the public model catalog, so no API key is sent.
+	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	var candidates []string
+	var err error
+	if *inputTokens == 0 {
+		request := sampleRequest
+		request.Models = sel
+		candidates, err = e.CandidateModels(request)
+	} else {
+		candidates, err = e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
+	}
+	if err != nil {
+		fail(err)
+	}
+	for _, id := range candidates {
+		fmt.Println(id)
 	}
 }
 

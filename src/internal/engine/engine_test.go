@@ -979,6 +979,32 @@ func TestEngineValidateSelection_whenMinIntelligenceIndexAbove100_thenErrors(t *
 	}
 }
 
+func TestEngineValidateSelection_whenCostPercentileNegative_thenErrors(t *testing.T) {
+	// Arrange
+	negative := model.ModelSelection{CostPercentile: -1}
+
+	// Act
+	err := validateSelection("Models", negative)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestEngineValidateSelection_whenCostPercentileAbove100_thenErrors(t *testing.T) {
+	// Arrange
+	tooHigh := model.ModelSelection{CostPercentile: 101}
+
+	// Act
+	err := validateSelection("Models", tooHigh)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
 func TestEngineCandidateModels_whenSelectionEmpty_thenListsOnlyTheCheapestOfEveryModel(t *testing.T) {
 	// Arrange
 	fake := &fakeOpenRouter{}

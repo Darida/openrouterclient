@@ -26,7 +26,7 @@ func Read(path string) (model.GenerateRequest, error) {
 		SystemPrompt:    input.SystemPrompt,
 		Prompt:          input.Prompt,
 		OutputSchema:    model.JSONSchema{Name: input.OutputSchema.Name, Schema: input.OutputSchema.Schema},
-		Models:          model.ModelSelection{Denied: input.ExcludedModels, MinIntelligenceIndex: input.MinIntelligenceIndex},
+		Models:          model.ModelSelection{Denied: input.ExcludedModels, MinIntelligenceIndex: input.MinIntelligenceIndex, CostPercentile: input.CostPercentile},
 		TargetQuality:   input.TargetQuality,
 		MaxOutputTokens: input.MaxOutputTokens,
 	}, nil

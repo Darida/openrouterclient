@@ -134,3 +134,52 @@ func TestEngineEstimate_whenOutputTokensZero_thenReturnsUnexpectedError(t *testi
 		t.Fatalf("err=%v; want *model.UnexpectedError", err)
 	}
 }
+
+func TestEngineEstimateCandidateModels_whenDefaultPercentile_thenListsOnlyTheCheapest(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+
+	// Act
+	candidates, err := engine.EstimateCandidateModels(estimateRequest)
+
+	// Assert
+	if err != nil || len(candidates) != 1 || candidates[0] != "cheap/model" {
+		t.Fatalf("candidates=%v, %v; want [cheap/model]", candidates, err)
+	}
+}
+
+func TestEngineEstimateCandidateModels_whenPercentile100_thenListsEveryAllowedModel(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	everyPrice := estimateRequest
+	everyPrice.Models.CostPercentile = 100
+
+	// Act
+	candidates, err := engine.EstimateCandidateModels(everyPrice)
+
+	// Assert
+	if err != nil || len(candidates) != 2 {
+		t.Fatalf("candidates=%v, %v; want cheap/model and pricey/model", candidates, err)
+	}
+}
+
+func TestEngineEstimateCandidateModels_whenInputTokensZero_thenErrors(t *testing.T) {
+	// Arrange
+	fake := &fakeOpenRouter{}
+	_, settings := fake.serve(t)
+	engine, _ := newEngine(t, settings)
+	noInput := estimateRequest
+	noInput.InputTokens = 0
+
+	// Act
+	_, err := engine.EstimateCandidateModels(noInput)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+}

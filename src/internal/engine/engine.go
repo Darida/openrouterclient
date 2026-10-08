@@ -108,11 +108,19 @@ func (e *Engine) CandidateModels(req model.GenerateRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, len(candidates))
-	for i, m := range candidates {
-		ids[i] = m.ID
+	return modelIDs(candidates), nil
+}
+
+// EstimateCandidateModels lists the models Estimate for req would draw from.
+func (e *Engine) EstimateCandidateModels(req model.EstimateRequest) ([]string, error) {
+	if err := validateEstimate(req); err != nil {
+		return nil, err
 	}
-	return ids, nil
+	candidates, err := e.candidateModels(req.Models, e.tag+generatorTagSuffix, req.InputTokens, req.OutputTokens)
+	if err != nil {
+		return nil, err
+	}
+	return modelIDs(candidates), nil
 }
 
 func (e *Engine) Estimate(ctx context.Context, req model.EstimateRequest) (model.Estimate, error) {
@@ -489,12 +497,24 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 	if len(models) == 0 {
 		return nil, fmt.Errorf("engine: history excludes every structured-output model of selection %+v with enough context: %v", sel, excluded)
 	}
-	pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens)
+	percentileRank := sel.CostPercentile
+	if percentileRank == 0 {
+		percentileRank = cost.DefaultPoolPercentile
+	}
+	pool, ceilingUSD, err := cost.CheapestPool(models, promptTokens, maxTokens, percentileRank)
 	if err != nil {
 		return nil, err
 	}
-	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "maxEstimateUSD", ceilingUSD)
+	e.logger.Info("openrouter: cost pool", "size", len(pool), "of", len(models), "percentile", percentileRank, "maxEstimateUSD", ceilingUSD)
 	return pool, nil
+}
+
+func modelIDs(models []catalog.Model) []string {
+	ids := make([]string, len(models))
+	for i, m := range models {
+		ids[i] = m.ID
+	}
+	return ids
 }
 
 // pickModel draws at random, spreading load across the cheapest pool.

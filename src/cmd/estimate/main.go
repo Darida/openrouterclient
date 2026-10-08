@@ -27,6 +27,7 @@ func main() {
 	outputTokens := flag.Int("output-tokens", 0, "output tokens to price (required, positive)")
 	exclude := flag.String("exclude", "", "comma-separated model IDs never picked (optional)")
 	minIndex := flag.Float64("min-intelligence-index", 0, "lowest Artificial Analysis intelligence index picked (optional; 0 means no minimum)")
+	costPercentile := flag.Float64("cost-percentile", 0, "cost percentile setting the cheapest pool's ceiling (optional; 0 means the 10th)")
 	flag.Parse()
 	var denied []string
 	if *exclude != "" {
@@ -38,7 +39,7 @@ func main() {
 	// Estimating reads only the public model catalog, so no API key is sent.
 	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	estimate, err := e.Estimate(context.Background(), model.EstimateRequest{
-		Models:       model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex},
+		Models:       model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile},
 		InputTokens:  *inputTokens,
 		OutputTokens: *outputTokens,
 	})
