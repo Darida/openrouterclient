@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Darida/openrouterclient/src/cmd/internal/selectionflag"
@@ -35,7 +34,7 @@ var sampleRequest = model.GenerateRequest{
 }
 
 func main() {
-	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional; absent lists each tier)")
+	exclude := flag.String("exclude", "", "comma-separated model IDs never asked (optional)")
 	minIndex := flag.Float64("min-intelligence-index", 0, "lowest Artificial Analysis intelligence index asked (optional; 0 means no minimum)")
 	costPercentile := flag.Float64("cost-percentile", 0, "cost percentile setting the cheapest pool's ceiling (optional; 0 means the 10th)")
 	inputTokens := flag.Int("input-tokens", 0, "prompt tokens to price instead of the sample request (optional; requires --output-tokens)")
@@ -44,71 +43,30 @@ func main() {
 	if (*inputTokens == 0) != (*outputTokens == 0) {
 		fail(errors.New("--input-tokens and --output-tokens must be given together"))
 	}
-	// Listing reads only the public model catalog, so no API key is sent.
-	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	// A selection nothing matches is an answer here, not a failure: it lists empty.
-	list := func(sel model.ModelSelection) ([]string, error) {
-		var candidates []string
+	var denied []string
+	if *exclude != "" {
 		var err error
-		if *inputTokens == 0 {
-			request := sampleRequest
-			request.Models = sel
-			candidates, err = e.CandidateModels(request)
-		} else {
-			candidates, err = e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
-		}
-		if errors.Is(err, engine.ErrNoCandidates) {
-			return nil, nil
-		}
-		return candidates, err
-	}
-	if *exclude == "" {
-		printTiers(list, *minIndex, *costPercentile)
-		return
-	}
-	denied, err := selectionflag.ParseExclude(*exclude)
-	if err != nil {
-		fail(err)
-	}
-	printDeniedPool(list, model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile})
-}
-
-// candidateLister lists the models a selection would pick from.
-type candidateLister func(model.ModelSelection) ([]string, error)
-
-// printDeniedPool runs one selection over both tiers, as Generate does, since
-// the cheapest-pool cut over the whole set differs from one cut per tier.
-func printDeniedPool(list candidateLister, sel model.ModelSelection) {
-	candidates, err := list(sel)
-	if err != nil {
-		fail(err)
-	}
-	var free, paid []string
-	for _, id := range candidates {
-		if strings.HasSuffix(id, ":free") {
-			free = append(free, id)
-		} else {
-			paid = append(paid, id)
-		}
-	}
-	printList(model.ModelTierFree, free)
-	printList(model.ModelTierPaid, paid)
-}
-
-func printTiers(list candidateLister, minIndex, costPercentile float64) {
-	for _, tier := range []model.ModelTier{model.ModelTierFree, model.ModelTierPaid} {
-		candidates, err := list(model.ModelSelection{Tier: tier, MinIntelligenceIndex: minIndex, CostPercentile: costPercentile})
-		if err != nil {
+		if denied, err = selectionflag.ParseExclude(*exclude); err != nil {
 			fail(err)
 		}
-		printList(tier, candidates)
 	}
-}
-
-func printList(tier model.ModelTier, ids []string) {
-	fmt.Printf("%s:\n", tier)
-	for _, id := range ids {
-		fmt.Printf("  %s\n", id)
+	sel := model.ModelSelection{Denied: denied, MinIntelligenceIndex: *minIndex, CostPercentile: *costPercentile}
+	// Listing reads only the public model catalog, so no API key is sent.
+	e := engine.New(engine.Production, "", tag, timeout, history.Disabled{}, replyfile.Local(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	var candidates []string
+	var err error
+	if *inputTokens == 0 {
+		request := sampleRequest
+		request.Models = sel
+		candidates, err = e.CandidateModels(request)
+	} else {
+		candidates, err = e.EstimateCandidateModels(model.EstimateRequest{Models: sel, InputTokens: *inputTokens, OutputTokens: *outputTokens})
+	}
+	if err != nil {
+		fail(err)
+	}
+	for _, id := range candidates {
+		fmt.Println(id)
 	}
 }
 

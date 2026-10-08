@@ -463,9 +463,6 @@ func entryFields(a attempt, label raceLabel, q model.Quality, reason string) his
 	}
 }
 
-// ErrNoCandidates marks a selection that leaves no model to ask.
-var ErrNoCandidates = errors.New("no candidate model")
-
 // candidateModels takes the selection's models, drops those whose context
 // can't hold the request, then those history excludes, then keeps only the
 // cheapest by estimated cost. It errors when nothing is left to ask.
@@ -475,7 +472,7 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 		return nil, err
 	}
 	if len(available) == 0 {
-		return nil, fmt.Errorf("engine: no structured-output model in OpenRouter's catalog matches selection %+v: %w", sel, ErrNoCandidates)
+		return nil, fmt.Errorf("engine: no structured-output model in OpenRouter's catalog matches selection %+v", sel)
 	}
 	requestTokens := promptTokens + maxTokens
 	var fitting []catalog.Model
@@ -485,7 +482,7 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 		}
 	}
 	if len(fitting) == 0 {
-		return nil, fmt.Errorf("engine: no structured-output model of selection %+v has context for ~%d prompt + %d output tokens: %w", sel, promptTokens, maxTokens, ErrNoCandidates)
+		return nil, fmt.Errorf("engine: no structured-output model of selection %+v has context for ~%d prompt + %d output tokens", sel, promptTokens, maxTokens)
 	}
 	excluded, err := e.excludedModels(tag)
 	if err != nil {
@@ -498,7 +495,7 @@ func (e *Engine) candidateModels(sel model.ModelSelection, tag string, promptTok
 		}
 	}
 	if len(models) == 0 {
-		return nil, fmt.Errorf("engine: history excludes every structured-output model of selection %+v with enough context: %v: %w", sel, excluded, ErrNoCandidates)
+		return nil, fmt.Errorf("engine: history excludes every structured-output model of selection %+v with enough context: %v", sel, excluded)
 	}
 	percentileRank := sel.CostPercentile
 	if percentileRank == 0 {

@@ -1,9 +1,8 @@
 #!/bin/sh
 # Usage: bin/models.sh [--exclude=<model-id>,<model-id>,...] [--min-intelligence-index=<0-100>] [--cost-percentile=<0-100>] [--input-tokens=<n> --output-tokens=<n>]
-# Prints the free and paid models a generation would pick from for a fixed
-# sample request, ignoring history; logs go to stderr. With --exclude, lists
-# one pool over every model minus those IDs, as bin/generate.sh picks. With
-# --min-intelligence-index, drops models below that index or without one.
+# Prints the models, free and paid in one list, a generation would pick from
+# for a fixed sample request, ignoring history; logs go to stderr. --exclude
+# drops those IDs, as bin/generate.sh does. With --min-intelligence-index, drops models below that index or without one.
 # --cost-percentile sets the cheapest pool's price percentile (default 10th).
 # --input-tokens and --output-tokens, given together, price that size instead
 # of the sample request, as bin/estimate.sh does.

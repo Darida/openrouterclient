@@ -218,20 +218,17 @@ fails, it prints the failed attempts on stderr and exits 1.
 bin/models.sh [--exclude=MODEL_ID,MODEL_ID,...] [--min-intelligence-index=N] [--cost-percentile=N] [--input-tokens=N --output-tokens=N]
 ```
 
-With no argument, `bin/models.sh` runs the model-selection pipeline
-for a fixed sample request (a one-line prompt with the default
-`MaxOutputTokens`) against each tier and prints the free
-candidates, then the cheapest paid pool, one per line under a `free:` and
-a `paid:` heading. With `--exclude`, a comma-separated list of exact model
-IDs, it instead runs one selection over every structured-output model
-minus those IDs, as `bin/generate.sh` does with `excludedModels`, and
-prints that pool split under the same headings. `--min-intelligence-index`
-sets `MinIntelligenceIndex` and `--cost-percentile` sets `CostPercentile` on
-either form. `--input-tokens` and `--output-tokens`, given together, replace the
+`bin/models.sh` runs one model selection over every structured-output
+model, free and paid, for a fixed sample request (a one-line prompt with the
+default `MaxOutputTokens`) and prints the resulting cheapest pool, one model
+ID per line. Free models price at $0 like in any selection. `--exclude`, a
+comma-separated list of exact model IDs, drops those, as `bin/generate.sh`
+does with `excludedModels`. `--min-intelligence-index` sets
+`MinIntelligenceIndex` and `--cost-percentile` sets `CostPercentile`.
+`--input-tokens` and `--output-tokens`, given together, replace the
 sample request's size with those token counts, as `bin/estimate.sh` prices
-them. A tier or pool nothing
-matches prints an empty list. An empty entry, or an ID that isn't a
-structured-output model in the catalog, is an error. Either
+them. An empty entry, or an ID
+that isn't a structured-output model in the catalog, is an error. Either
 way it ignores history, so no model is excluded by past failures. It sends
 no chat request and needs no API
 key, since the model catalog is public.
