@@ -15,7 +15,8 @@ const latencyRankingHintSeconds = 30
 // Sent as provider.max_price: the highest list price, in USD per 1M tokens,
 // an endpoint may charge for each prompt and each completion token. They cap
 // the price rate, not a request's total cost; OpenRouter refuses to route to
-// an endpoint priced above either.
+// an endpoint priced above either. They guard against accidentally calling an
+// outlier model priced like openai/o1-pro ($150 / $600 per 1M in / out).
 const (
 	maxPromptUSDPerMillion     = 6
 	maxCompletionUSDPerMillion = 21
