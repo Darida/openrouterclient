@@ -129,10 +129,11 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
     review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/`, `src/cmd/models/`, and `src/cmd/rate/` are the
-  command-line programs behind `bin/generate.sh`, `bin/models.sh`, and
-  `bin/rate.sh`; `src/cmd/internal/` holds the requirements-file reader
-  `bin/generate.sh` uses.
+- `src/cmd/generate/`, `src/cmd/models/`, `src/cmd/estimate/`, and
+  `src/cmd/rate/` are the command-line programs behind `bin/generate.sh`,
+  `bin/models.sh`, `bin/estimate.sh`, and `bin/rate.sh`; `src/cmd/internal/`
+  holds the requirements-file reader `bin/generate.sh` uses and the
+  `--exclude` parser the listing and estimating programs share.
 
 ## Behavior
 
@@ -228,6 +229,18 @@ that isn't a structured-output model in the catalog, is an error. Either
 way it ignores history, so no model is excluded by past failures. It sends
 no chat request and needs no API
 key, since the model catalog is public.
+
+```sh
+bin/estimate.sh --input-tokens=N --output-tokens=N [--exclude=MODEL_ID,...] [--min-intelligence-index=N]
+```
+
+`bin/estimate.sh` calls `Client.Estimate` and prints the picked model, its
+per-token prices, and its estimated cost as JSON on stdout. Both token
+counts are required and must be positive. `--exclude` and
+`--min-intelligence-index` set the selection as in `bin/models.sh`; with
+neither, it picks from every structured-output model. Like
+`bin/models.sh`, it ignores history, sends no chat request, and needs no
+API key. Each run draws again.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Darida/openrouterclient/src/cmd/internal/selectionflag"
 	"github.com/Darida/openrouterclient/src/internal/engine"
 	"github.com/Darida/openrouterclient/src/internal/history"
 	"github.com/Darida/openrouterclient/src/internal/replyfile"
@@ -42,7 +43,7 @@ func main() {
 		printTiers(e, *minIndex)
 		return
 	}
-	denied, err := parseExclude(*exclude)
+	denied, err := selectionflag.ParseExclude(*exclude)
 	if err != nil {
 		fail(err)
 	}
@@ -68,16 +69,6 @@ func printDeniedPool(e *engine.Engine, sel model.ModelSelection) {
 	}
 	printList(model.ModelTierFree, free)
 	printList(model.ModelTierPaid, paid)
-}
-
-func parseExclude(list string) ([]string, error) {
-	ids := strings.Split(list, ",")
-	for _, id := range ids {
-		if strings.TrimSpace(id) == "" {
-			return nil, fmt.Errorf("--exclude %q has an empty model ID", list)
-		}
-	}
-	return ids, nil
 }
 
 func printTiers(e *engine.Engine, minIndex float64) {
