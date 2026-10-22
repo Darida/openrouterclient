@@ -5,7 +5,9 @@ back JSON that matches a schema you supply. It is ported from
 `assetloom/src/clients/openrouter` and supports text generation only.
 
 `Client` has three generation calls, plus `Estimate`, which picks and
-prices a model without generating (see Model selection). `Generate` runs step 1 alone. `Review` runs
+prices a model without generating (see Model selection), and
+`PickProvider`, which names a model's cheapest provider (see Provider
+selection). `Generate` runs step 1 alone. `Review` runs
 step 2 alone, on content the caller supplies. `GenerateReviewed` runs
 steps 1 to 3. All three track outcomes as in step 4.
 
@@ -105,6 +107,37 @@ in memory for an hour. Catalog entries priced at exactly `-1` (prompt or
 completion) are routers, not models, and are never candidates; any other
 negative or unparseable price is an unexpected error.
 
+## Provider selection
+
+OpenRouter serves most models through several providers, each its own
+endpoint with its own prices and limits. `Client.PickProvider` takes a
+`ProviderRequest`: an exact structured-output model ID from the catalog and
+positive `InputTokens` and `OutputTokens`. It reads that model's endpoint
+listing (`/api/v1/models/{id}/endpoints`, cached in memory for an hour per
+model) and keeps the endpoints that:
+
+1. support every parameter a chat request sends (`structured_outputs`,
+   `response_format`, `max_tokens`), since requests require them;
+2. fit `InputTokens` + `OutputTokens` in their context length, and each
+   count within the endpoint's own prompt and completion limits, when set;
+3. charge no more than the chat price caps (Model selection, above).
+
+Each step that leaves no endpoint is an error naming it. Of the rest it
+returns the single cheapest: prompt price × `InputTokens` + completion price
+× `OutputTokens` + any per-request fee, at list prices with every
+`min_prompt_tokens` override the prompt reaches applied in order, a later
+one winning. A tie goes to the lower tag, so the same listing always yields
+the same pick. The listing's `discount` and `status` are ignored. The
+result names the endpoint's tag, the routing slug OpenRouter's
+`provider.order` and `provider.only` accept, such as `deepinfra/turbo`.
+`PickProvider` ignores history and sends no chat request; generation calls
+don't pin a provider.
+
+An endpoint without a tag or context length, with a negative or
+unparseable price, or with a price override limited by time of day
+(`utc_start`, `utc_end`, `utc_days`) or lacking `min_prompt_tokens` is an
+unexpected error.
+
 ## Layout
 
 The repo root holds only module and tooling files (`go.mod`, `git/`,
@@ -118,8 +151,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
 - `src/internal/` holds all behavior, split into these packages:
   - `chat`: builds the wire payload and parses responses.
   - `hedge`: runs staggered parallel attempts.
-  - `catalog`: caches OpenRouter's model list and names the candidates.
-  - `cost`: estimates a request's cost per model and keeps the cheapest.
+  - `catalog`: caches OpenRouter's model list and each model's provider
+    endpoints, and names the candidates.
+  - `cost`: estimates a request's cost per model or endpoint and keeps the
+    cheapest.
   - `history`: stores outcomes and computes exclusions, or does nothing
     when disabled.
   - `review`: holds the fixed review prompt and schema.
@@ -131,9 +166,10 @@ The repo root holds only module and tooling files (`go.mod`, `git/`,
     review, and correct loop.
 
   These packages may import `src/model/` but never `src/api/`.
-- `src/cmd/generate/`, `src/cmd/models/`, `src/cmd/estimate/`, and
-  `src/cmd/rate/` are the command-line programs behind `bin/generate.sh`,
-  `bin/models.sh`, `bin/estimate.sh`, and `bin/rate.sh`; `src/cmd/internal/`
+- `src/cmd/generate/`, `src/cmd/models/`, `src/cmd/estimate/`,
+  `src/cmd/providers/`, and `src/cmd/rate/` are the command-line programs
+  behind `bin/generate.sh`, `bin/models.sh`, `bin/estimate.sh`,
+  `bin/providers.sh`, and `bin/rate.sh`; `src/cmd/internal/`
   holds the requirements-file reader `bin/generate.sh` uses and the
   `--exclude` parser the listing and estimating programs share.
 
@@ -245,6 +281,15 @@ counts are required and must be positive. `--exclude`,
 neither, it picks from every structured-output model. Like
 `bin/models.sh`, it ignores history, sends no chat request, and needs no
 API key. Each run draws again.
+
+```sh
+bin/providers.sh --model=MODEL_ID --input-tokens=N --output-tokens=N
+```
+
+`bin/providers.sh` calls `Client.PickProvider` and prints the picked
+endpoint's tag, provider name, prices, and estimated cost as JSON on stdout.
+All three flags are required. Like `bin/estimate.sh`, it sends no chat
+request and needs no API key.
 
 ```sh
 bin/rate.sh --id=GENERATION_ID --quality=high|medium|low --reason=WHY

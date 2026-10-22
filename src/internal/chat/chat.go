@@ -18,9 +18,13 @@ const latencyRankingHintSeconds = 30
 // an endpoint priced above either. They guard against accidentally calling an
 // outlier model priced like openai/o1-pro ($150 / $600 per 1M in / out).
 const (
-	maxPromptUSDPerMillion     = 6
-	maxCompletionUSDPerMillion = 21
+	MaxPromptUSDPerMillion     = 6
+	MaxCompletionUSDPerMillion = 21
 )
+
+// RequiredParameters are the parameters BuildPayload sends that its
+// require_parameters makes every serving endpoint support.
+var RequiredParameters = []string{"structured_outputs", "response_format", "max_tokens"}
 
 type Message struct {
 	Role    string `json:"role"`
@@ -63,7 +67,7 @@ func BuildPayload(messages []Message, schema model.JSONSchema, modelID string, m
 		},
 		"provider": map[string]any{
 			"require_parameters": true, "preferred_max_latency": latencyRankingHintSeconds, "allow_fallbacks": false,
-			"max_price": map[string]any{"prompt": maxPromptUSDPerMillion, "completion": maxCompletionUSDPerMillion},
+			"max_price": map[string]any{"prompt": MaxPromptUSDPerMillion, "completion": MaxCompletionUSDPerMillion},
 		},
 		"messages": messages,
 	}

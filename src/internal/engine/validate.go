@@ -124,3 +124,13 @@ func validateEstimate(req model.EstimateRequest) error {
 	}
 	return nil
 }
+
+func validateProviderRequest(req model.ProviderRequest) error {
+	if req.Model == "" {
+		return errors.New("engine: Model is required")
+	}
+	if req.InputTokens <= 0 || req.OutputTokens <= 0 {
+		return fmt.Errorf("engine: InputTokens and OutputTokens must be positive, got %d and %d", req.InputTokens, req.OutputTokens)
+	}
+	return nil
+}

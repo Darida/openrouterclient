@@ -32,6 +32,12 @@ type Client interface {
 	// It reads only OpenRouter's model catalog. Each call draws again at
 	// random from the cheapest models.
 	Estimate(ctx context.Context, req model.EstimateRequest) (model.Estimate, error)
+	// PickProvider returns the cheapest provider endpoint of req.Model that
+	// supports structured output, fits req's token counts, and is priced
+	// within the chat price caps. It reads only OpenRouter's public model
+	// listings, ignores history, and always picks the same endpoint for the
+	// same listing.
+	PickProvider(ctx context.Context, req model.ProviderRequest) (model.ProviderChoice, error)
 	// Rate records a manual high/medium/low rating of a generation's or a
 	// review's GenerationID in history. Rating a review low also clears the
 	// automatic rating that review gave. It errors for any other quality, an
