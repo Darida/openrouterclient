@@ -23,7 +23,8 @@ const (
 	routerPrice = "-1"
 )
 
-// Catalog is OpenRouter's model list, fetched at most once per cacheTTL.
+// Catalog is OpenRouter's model list and each model's provider endpoints,
+// each fetched at most once per cacheTTL.
 type Catalog struct {
 	URL  string
 	HTTP *http.Client
@@ -34,6 +35,8 @@ type Catalog struct {
 	fetchedAt time.Time
 	models    []entry
 	body      []byte
+
+	endpoints endpointsCache
 }
 
 // Candidates lists tier's models that support strict json_schema output,
@@ -99,7 +102,7 @@ func (c *Catalog) candidate(m entry) (Model, error) {
 }
 
 func (c *Catalog) refresh() error {
-	body, err := c.fetch()
+	body, err := c.fetch(c.URL)
 	if err != nil {
 		return err
 	}
@@ -111,24 +114,24 @@ func (c *Catalog) refresh() error {
 	return nil
 }
 
-func (c *Catalog) fetch() ([]byte, error) {
+func (c *Catalog) fetch(url string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: build request: %w", err)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("catalog: fetch %s: %w", c.URL, err)
+		return nil, fmt.Errorf("catalog: fetch %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("catalog: read %s: %w", c.URL, err)
+		return nil, fmt.Errorf("catalog: read %s: %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, c.describedError(body, fmt.Sprintf("%s returned HTTP %d", c.URL, resp.StatusCode))
+		return nil, c.describedError(body, fmt.Sprintf("%s returned HTTP %d", url, resp.StatusCode))
 	}
 	return body, nil
 }

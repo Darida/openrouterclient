@@ -76,6 +76,8 @@ type fakeOpenRouter struct {
 	reviews     []chatRequest
 	generate    func(w http.ResponseWriter, r *http.Request, n int)
 	review      func(n int) string
+	// Endpoint listing bodies keyed by model ID.
+	endpoints map[string]string
 }
 
 func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
@@ -106,6 +108,15 @@ func (f *fakeOpenRouter) serve(t *testing.T) (*httptest.Server, Settings) {
 			{"id":"cheap/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000001"},"benchmarks":{"artificial_analysis":{"intelligence_index":50}}},
 			{"id":"pricey/model","context_length":100000,"supported_parameters":["structured_outputs"],"architecture":{"output_modalities":["text"]},"pricing":{"prompt":"0.001","completion":"0.001"},"benchmarks":{"artificial_analysis":{"intelligence_index":null}}}
 		]}`)
+	})
+	mux.HandleFunc("/models/", func(w http.ResponseWriter, r *http.Request) {
+		modelID, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/models/"), "/endpoints")
+		body, listed := f.endpoints[modelID]
+		if !ok || !listed {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, body)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)

@@ -92,3 +92,16 @@ type EstimateRequest struct {
 	// positive.
 	OutputTokens int
 }
+
+// ProviderRequest asks which of one model's OpenRouter providers would serve
+// a request of this size most cheaply.
+type ProviderRequest struct {
+	// An exact structured-output model ID from OpenRouter's catalog.
+	Model string
+	// The prompt's size, system prompt and output schema included. Must be
+	// positive.
+	InputTokens int
+	// The output tokens to price, as MaxOutputTokens would be. Must be
+	// positive.
+	OutputTokens int
+}
